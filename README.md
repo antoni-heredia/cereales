@@ -6,6 +6,37 @@ marca de tiempo que enlazan con el punto exacto de la transcripción.
 
 La interfaz está portada del prototipo de Claude Design (`cereales.dc.html`).
 
+## Motivación
+
+Granola acertó con la forma de trabajar: grabas la reunión, se transcribe sola y
+las notas que escribes quedan ancladas al minuto exacto en que se dijo cada cosa,
+así que revisar una reunión de una hora no obliga a volver a escucharla. El
+problema no es el producto, es lo que hay debajo: es cerrado, de pago por
+suscripción, solo para macOS y el audio de todas tus reuniones —las internas, las
+de clientes, las que no deberían salir de la empresa— acaba en el servidor de otro.
+
+cereales copia esa forma de trabajar y quita esa parte. Es código abierto, corre
+en tu máquina y transcribe en local con whisper.cpp: por defecto el audio no sale
+del equipo y no hay cuenta, ni clave, ni suscripción. Quien prefiera mejor calidad
+y saber quién habló puede elegir ElevenLabs Scribe en Ajustes, pero es una decisión
+explícita y consciente, no lo que pasa por omisión.
+
+### Qué es la versión 0.1.0
+
+Lo que hay funciona de punta a punta —grabar de sistema, micrófono o una
+aplicación; transcribir; tomar notas enlazadas; exportar a TXT, Markdown o SRT—
+pero es una primera versión y se nota:
+
+- **Solo Windows.** La captura está escrita contra WASAPI. macOS y Linux
+  necesitan otra implementación, no un parche.
+- **No hay resúmenes automáticos.** Es la función estrella de Granola y aquí
+  todavía no existe: cereales te da la transcripción y tus notas, no un acta
+  redactada.
+- **Sin sincronización ni nube.** Las grabaciones y las notas viven en tu disco.
+  No hay cuentas, ni compartir, ni aplicación móvil.
+- **Sin integración con el calendario.** Las reuniones se empiezan a mano; nadie
+  detecta que tienes una llamada a las 10:00.
+
 ## Cómo funciona
 
 - **Captura**: WASAPI directamente (`src-tauri/src/audio/win.rs`). Tres modos por
