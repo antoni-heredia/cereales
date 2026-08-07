@@ -1,0 +1,51 @@
+/*
+ * Design tokens lifted from the Claude Design prototype (cereales.dc.html).
+ * The prototype hardcoded these as inline hex values; they live here so the
+ * palette has exactly one source of truth.
+ */
+:root {
+  /* Surfaces */
+  --bg: #f3f2f2;
+  --surface: #eae9e9;
+  --surface-raised: #f8f4f4;
+  --surface-hover: #eae7e7;
+  --surface-press: #d7d3d3;
+
+  /* Accent */
+  --accent: #ec3013;
+  --accent-press: #dd2b0f;
+  --accent-deep: #ae1800;
+  --accent-tint: #fff2ef;
+
+  /* Text */
+  --text: #201e1d;
+  --text-muted: #605d5d;
+  --text-faint: #7d7979;
+  --text-inverse: #f3f2f2;
+
+  /* Neutral action (stop button) */
+  --neutral: #7d7979;
+
+  /* Borders — the prototype's hard, unrounded rules */
+  --border: rgba(32, 30, 29, 0.4);
+  --border-soft: rgba(32, 30, 29, 0.3);
+  --border-faint: rgba(32, 30, 29, 0.25);
+  --border-hairline: rgba(32, 30, 29, 0.2);
+  --overlay-hover: rgba(32, 30, 29, 0.07);
+  --overlay-hover-soft: rgba(32, 30, 29, 0.05);
+
+  /* Elevation */
+  --shadow-card: 0 1px 2px rgba(45, 43, 43, 0.14);
+  --shadow-dropdown: 0 3px 10px rgba(45, 43, 43, 0.16);
+
+  /* Type */
+  --font: 'Archivo', system-ui, -apple-system, sans-serif;
+  --fw-regular: 400;
+  --fw-medium: 600;
+  --fw-bold: 700;
+  --fw-black: 800;
+
+  /* Layout */
+  --sidebar-width: 240px;
+  --rule: 2px;
+}
