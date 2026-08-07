@@ -75,4 +75,9 @@ export interface Settings {
   elevenLabsApiKey: string;
 }
 
-export type RecorderPhase = 'idle' | 'recording' | 'transcribing' | 'done';
+/**
+ * Estados del grabador. No hay fase de transcripción: transcribir dejó de ser
+ * un paso obligatorio al parar y ahora se lanza desde la pantalla de detalle,
+ * donde el progreso lo sigue `transcribingRecordingId`.
+ */
+export type RecorderPhase = 'idle' | 'recording' | 'done';

@@ -15,7 +15,6 @@ export function RecordScreen() {
     noteDraft,
     liveNotes,
     error,
-    progress,
     actions,
   } = useApp();
 
@@ -62,22 +61,6 @@ export function RecordScreen() {
           >
             {recording ? 'Detener grabación' : 'Grabar'}
           </button>
-        </div>
-      )}
-
-      {phase === 'transcribing' && (
-        <div className="pending-card">
-          <div className="pending-mark" aria-hidden="true" />
-          <div className="pending-label">
-            {progress?.stage === 'transcribiendo' && progress.percent >= 0
-              ? `Transcribiendo audio… ${progress.percent}%`
-              : 'Transcribiendo audio…'}
-          </div>
-          {progress?.stage === 'transcribiendo' && progress.percent >= 0 && (
-            <div className="progress-track" style={{ width: '100%' }}>
-              <div className="progress-fill" style={{ width: `${progress.percent}%` }} />
-            </div>
-          )}
         </div>
       )}
 
