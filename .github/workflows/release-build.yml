@@ -1,0 +1,90 @@
+name: Compilar binarios
+
+# Se invoca desde version-bump.yml en lugar de escuchar `push: tags`: un tag
+# empujado con GITHUB_TOKEN no dispara workflows, así que ese disparador nunca
+# llegaría a activarse. El workflow_dispatch queda para recompilar un tag ya
+# existente a mano.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag a compilar (por ejemplo v0.2.0)"
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag ya existente a compilar y publicar"
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    # whisper.cpp se compila desde cero con LTO: unos 20 minutos sin caché.
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Compilar
+        run: npm run tauri:build
+
+      - name: Preparar artefactos
+        id: artefactos
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          cd src-tauri/target/release
+
+          # El .exe suelto no lleva versión en el nombre; sin renombrarlo, en la
+          # lista de descargas no se distingue de el de cualquier otra release.
+          cp cereales.exe "cereales_${VERSION}_x64-portable.exe"
+
+          echo "portable=cereales_${VERSION}_x64-portable.exe" >> "$GITHUB_OUTPUT"
+          ls -la bundle/msi bundle/nsis
+
+      - name: Subir al release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          PORTABLE: ${{ steps.artefactos.outputs.portable }}
+        run: |
+          set -euo pipefail
+          cd src-tauri/target/release
+          gh release upload "$TAG" \
+            bundle/msi/*.msi \
+            bundle/nsis/*-setup.exe \
+            "$PORTABLE" \
+            --clobber
+
+      # El release nace en borrador y solo se hace visible aquí: si la
+      # compilación falla, nadie se encuentra una versión publicada y vacía.
+      - name: Publicar el release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: gh release edit "$TAG" --draft=false

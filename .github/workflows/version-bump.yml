@@ -26,6 +26,10 @@ jobs:
     # dejamos también esta guarda por si alguien reescribe el mensaje.
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
 
+    outputs:
+      tagged: ${{ steps.commit.outputs.tagged }}
+      version: ${{ steps.bump.outputs.version }}
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -114,9 +118,22 @@ jobs:
           git push origin "v$VERSION"
           echo "tagged=true" >> "$GITHUB_OUTPUT"
 
-      - name: Crear release
+      # Nace en borrador: lo publica el job de binarios una vez subidos. Si la
+      # compilación falla, nadie se encuentra una release visible y sin nada que
+      # descargar.
+      - name: Crear release en borrador
         if: steps.commit.outputs.tagged == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.bump.outputs.version }}
-        run: gh release create "v$VERSION" --title "v$VERSION" --generate-notes
+        run: gh release create "v$VERSION" --title "v$VERSION" --generate-notes --draft
+
+  # Compila en Windows y cuelga los instaladores del release. Va aquí y no en un
+  # `on: push: tags` porque el tag lo empuja GITHUB_TOKEN, y esos tags no
+  # disparan workflows.
+  binarios:
+    needs: bump
+    if: needs.bump.outputs.tagged == 'true'
+    uses: ./.github/workflows/release-build.yml
+    with:
+      tag: v${{ needs.bump.outputs.version }}
