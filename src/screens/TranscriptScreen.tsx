@@ -14,7 +14,7 @@ export function TranscriptScreen() {
     actions,
   } = useApp();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const entryRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const entryRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newTitle, setNewTitle] = useState('');

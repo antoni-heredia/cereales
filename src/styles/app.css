@@ -736,15 +736,23 @@
   padding-right: 8px;
 }
 
+/* Es un <button>: al pulsarlo el audio salta a esa frase. El reset global ya le
+   quita el aspecto de botón, solo falta que ocupe la fila entera. */
 .entry {
   display: flex;
   gap: 14px;
+  width: 100%;
   padding: 10px 12px;
   background: transparent;
   scroll-margin-top: 12px;
 }
 
-.entry--active {
+.entry:hover {
+  background: var(--overlay-hover-soft);
+}
+
+.entry--active,
+.entry--active:hover {
   background: var(--accent-tint);
 }
 
@@ -757,7 +765,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Los hijos van en <span> porque un <button> solo admite contenido de frase;
+   se les devuelve el comportamiento de bloque a mano. */
+.entry-body {
+  display: block;
+  min-width: 0;
+}
+
 .entry-speaker {
+  display: block;
   font-size: 12px;
   font-weight: var(--fw-bold);
   color: var(--text-muted);
@@ -765,6 +781,7 @@
 }
 
 .entry-text {
+  display: block;
   font-size: 14px;
   line-height: 1.55;
 }

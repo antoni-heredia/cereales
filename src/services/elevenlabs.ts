@@ -23,7 +23,7 @@ interface ScribeWord {
   speaker_id?: string;
 }
 
-interface ScribeResponse {
+export interface ScribeResponse {
   text?: string;
   words?: ScribeWord[];
 }
@@ -99,7 +99,7 @@ export const elevenLabsTranscription = (apiKey: string): TranscriptionService =>
  * transcripción ilegible y rompería el salto desde una nota, que busca la
  * entrada más cercana en el tiempo: se agrupan en frases.
  */
-function agruparEnSegmentos(result: ScribeResponse): TranscriptEntry[] {
+export function agruparEnSegmentos(result: ScribeResponse): TranscriptEntry[] {
   const words = result.words ?? [];
   if (words.length === 0) {
     const text = result.text?.trim();
@@ -108,40 +108,47 @@ function agruparEnSegmentos(result: ScribeResponse): TranscriptEntry[] {
 
   // Con un solo hablante el nombre no aporta nada, y la interfaz ya oculta la
   // línea cuando va vacío.
-  const hablantes = new Set(words.map((w) => w.speaker_id).filter(Boolean));
+  const hablantes = new Set(
+    words.filter((w) => w.type !== 'spacing').map((w) => w.speaker_id).filter(Boolean),
+  );
   const diariza = hablantes.size > 1;
 
   const entries: TranscriptEntry[] = [];
-  let buffer = '';
-  let inicio = 0;
-  let hablanteActual: string | undefined;
+  // Un segmento abierto se representa con un objeto, no con "el buffer no está
+  // vacío": el espaciado ensucia el buffer y haría creer que sigue abierto.
+  let abierto: { inicio: number; hablante?: string; partes: string[] } | null = null;
 
   const cerrar = () => {
-    const text = buffer.trim();
+    if (!abierto) return;
+    const text = abierto.partes.join('').trim();
     if (text) {
-      entries.push({ timeSec: inicio, speaker: diariza ? etiqueta(hablanteActual) : '', text });
+      entries.push({
+        timeSec: abierto.inicio,
+        speaker: diariza ? etiqueta(abierto.hablante) : '',
+        text,
+      });
     }
-    buffer = '';
+    abierto = null;
   };
 
   for (const word of words) {
+    // El espaciado solo separa palabras: nunca abre segmento ni decide hablante.
     if (word.type === 'spacing') {
-      buffer += word.text ?? ' ';
+      abierto?.partes.push(word.text ?? ' ');
       continue;
     }
 
-    const cambiaHablante = buffer !== '' && word.speaker_id !== hablanteActual;
-    if (cambiaHablante) cerrar();
-
-    if (buffer === '') {
-      inicio = word.start ?? 0;
-      hablanteActual = word.speaker_id;
+    if (abierto && word.speaker_id !== abierto.hablante) cerrar();
+    if (!abierto) {
+      abierto = { inicio: word.start ?? 0, hablante: word.speaker_id, partes: [] };
     }
-    buffer += word.text ?? '';
+    abierto.partes.push(word.text ?? '');
 
-    const largo = buffer.length >= MAX_SEGMENTO_CHARS;
-    const duracion = (word.end ?? word.start ?? inicio) - inicio >= MAX_SEGMENTO_SEG;
-    if (FIN_DE_FRASE.test(buffer.trimEnd()) || largo || duracion) cerrar();
+    const texto = abierto.partes.join('');
+    const fin = word.end ?? word.start ?? abierto.inicio;
+    const largo = texto.length >= MAX_SEGMENTO_CHARS;
+    const duracion = fin - abierto.inicio >= MAX_SEGMENTO_SEG;
+    if (FIN_DE_FRASE.test(texto.trimEnd()) || largo || duracion) cerrar();
   }
   cerrar();
 
