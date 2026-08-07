@@ -35,6 +35,8 @@ fn default_settings(app: &AppHandle) -> Settings {
         transcript_folder: base.join("transcripciones").to_string_lossy().into_owned(),
         default_source_id: String::new(),
         transcript_format: "Markdown".to_string(),
+        transcription_service: "local".to_string(),
+        eleven_labs_api_key: String::new(),
     }
 }
 

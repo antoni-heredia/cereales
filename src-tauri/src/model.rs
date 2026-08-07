@@ -50,6 +50,12 @@ pub struct Transcript {
     pub notes: Vec<Note>,
 }
 
+/// Motor por defecto para un `settings.json` escrito antes de que existiera la
+/// opción: transcribir en local es lo que hacía la app entonces.
+fn default_transcription_service() -> String {
+    "local".to_string()
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -58,6 +64,13 @@ pub struct Settings {
     pub default_source_id: String,
     /// "TXT" | "Markdown" | "SRT"
     pub transcript_format: String,
+    /// "local" | "elevenlabs"
+    #[serde(default = "default_transcription_service")]
+    pub transcription_service: String,
+    /// Vacío mientras no se configure. Se guarda en claro en el archivo de
+    /// ajustes, igual que el resto de la configuración.
+    #[serde(default)]
+    pub eleven_labs_api_key: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -65,4 +78,49 @@ pub struct Settings {
 pub struct StopResult {
     pub audio_path: String,
     pub duration_sec: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Todo campo de `Settings` en TypeScript tiene que sobrevivir al viaje de
+    /// ida y vuelta por Rust. Un campo que falte aquí no da error: serde ignora
+    /// lo desconocido al deserializar y `save_settings` lo borra del archivo en
+    /// silencio, así que el ajuste parece funcionar hasta que se reinicia.
+    #[test]
+    fn los_ajustes_sobreviven_la_ida_y_vuelta() {
+        let json = r#"{
+            "recordingFolder": "C:\\audio",
+            "transcriptFolder": "C:\\texto",
+            "defaultSourceId": "sys:default",
+            "transcriptFormat": "Markdown",
+            "transcriptionService": "elevenlabs",
+            "elevenLabsApiKey": "sk_secreto"
+        }"#;
+
+        let parsed: Settings = serde_json::from_str(json).expect("debería deserializar");
+        assert_eq!(parsed.transcription_service, "elevenlabs");
+        assert_eq!(parsed.eleven_labs_api_key, "sk_secreto");
+
+        let vuelta = serde_json::to_string(&parsed).expect("debería serializar");
+        assert!(vuelta.contains("\"transcriptionService\":\"elevenlabs\""), "salió: {vuelta}");
+        assert!(vuelta.contains("\"elevenLabsApiKey\":\"sk_secreto\""), "salió: {vuelta}");
+    }
+
+    /// Un `settings.json` escrito antes de existir estos campos debe seguir
+    /// cargando, no dejar la app sin ajustes.
+    #[test]
+    fn un_archivo_antiguo_recibe_valores_por_defecto() {
+        let json = r#"{
+            "recordingFolder": "C:\\audio",
+            "transcriptFolder": "C:\\texto",
+            "defaultSourceId": "",
+            "transcriptFormat": "Markdown"
+        }"#;
+
+        let parsed: Settings = serde_json::from_str(json).expect("el formato antiguo debe cargar");
+        assert_eq!(parsed.transcription_service, "local");
+        assert_eq!(parsed.eleven_labs_api_key, "");
+    }
 }
