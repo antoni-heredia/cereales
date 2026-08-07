@@ -1,0 +1,122 @@
+name: Version bump
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      level:
+        description: "Nivel de incremento (auto = deducir de los commits)"
+        type: choice
+        required: true
+        default: auto
+        options: [auto, major, minor, patch]
+
+concurrency:
+  group: version-bump
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    # El propio bot no vuelve a dispararse: el commit lleva [skip ci], pero
+    # dejamos también esta guarda por si alguien reescribe el mensaje.
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Calcular nivel de incremento
+        id: level
+        run: |
+          set -euo pipefail
+
+          MANUAL="${{ github.event.inputs.level || 'auto' }}"
+          if [ "$MANUAL" != "auto" ]; then
+            echo "level=$MANUAL" >> "$GITHUB_OUTPUT"
+            echo "Nivel forzado manualmente: $MANUAL"
+            exit 0
+          fi
+
+          # Rango de commits a analizar: desde el último tag, o desde el estado
+          # anterior del push si aún no hay ninguno.
+          LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          if [ -n "$LAST_TAG" ]; then
+            RANGE="$LAST_TAG..HEAD"
+          elif git cat-file -e "${{ github.event.before }}^{commit}" 2>/dev/null; then
+            RANGE="${{ github.event.before }}..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+          echo "Analizando commits en: $RANGE"
+
+          LOG="$(git log --no-merges --format=%B "$RANGE")"
+          if [ -z "$(echo "$LOG" | tr -d '[:space:]')" ]; then
+            echo "Sin commits nuevos; no se incrementa versión."
+            echo "level=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Conventional Commits:
+          #   feat!: / fix(scope)!: / BREAKING CHANGE  -> major
+          #   feat: / feat(scope):                     -> minor
+          #   resto                                    -> patch
+          if echo "$LOG" | grep -qE '^[a-zA-Z]+(\([^)]*\))?!:' || echo "$LOG" | grep -qE '^BREAKING[ -]CHANGE'; then
+            LEVEL=major
+          elif echo "$LOG" | grep -qE '^feat(\([^)]*\))?:'; then
+            LEVEL=minor
+          else
+            LEVEL=patch
+          fi
+
+          echo "Nivel detectado: $LEVEL"
+          echo "level=$LEVEL" >> "$GITHUB_OUTPUT"
+
+      - name: Incrementar versión
+        id: bump
+        if: steps.level.outputs.level != 'none'
+        run: |
+          set -euo pipefail
+          VERSION="$(node .github/scripts/bump-version.mjs '${{ steps.level.outputs.level }}')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Nueva versión: $VERSION"
+          git diff --stat
+
+      - name: Commit y tag
+        id: commit
+        if: steps.level.outputs.level != 'none'
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet; then
+            echo "Los ficheros de versión ya estaban actualizados; nada que commitear."
+            echo "tagged=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git add package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+          git commit -m "chore(release): v$VERSION [skip ci]"
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin "HEAD:${{ github.ref_name }}"
+          git push origin "v$VERSION"
+          echo "tagged=true" >> "$GITHUB_OUTPUT"
+
+      - name: Crear release
+        if: steps.commit.outputs.tagged == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: gh release create "v$VERSION" --title "v$VERSION" --generate-notes

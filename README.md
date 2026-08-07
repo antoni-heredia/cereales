@@ -125,6 +125,30 @@ está descargado.
 cd src-tauri && cargo test --lib -- --test-threads=1
 ```
 
+## Versionado
+
+Las versiones se publican solas. Al hacer push a `main`, GitHub Actions deduce el
+incremento de los mensajes de commit ([Conventional
+Commits](https://www.conventionalcommits.org/)), actualiza la versión, crea el
+tag `vX.Y.Z` y publica la release:
+
+| Commit | Incremento |
+| --- | --- |
+| `feat!:` o `BREAKING CHANGE` en el cuerpo | major |
+| `feat:` | minor |
+| `fix:`, `perf:`, `chore:`, … | patch |
+
+La versión vive en cinco ficheros (`package.json`, `package-lock.json`,
+`src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` y `src-tauri/Cargo.lock`) y
+los mantiene sincronizados un único script, así que **no se editan a mano**:
+
+```bash
+node .github/scripts/bump-version.mjs minor
+```
+
+Para forzar un nivel concreto sin depender de los commits: **Actions → Version
+bump → Run workflow**. El detalle está en [CLAUDE.md](CLAUDE.md).
+
 ## Arquitectura
 
 ```
