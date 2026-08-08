@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { TagInput } from '@/components/TagInput';
 import { formatRecordingDate, formatTime, nearestEntryIndex } from '@/lib/format';
 import { useApp } from '@/state/store';
 
@@ -18,7 +19,6 @@ export function TranscriptScreen() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newTitle, setNewTitle] = useState('');
-  const [tagsInput, setTagsInput] = useState('');
 
   // Clicking a note scrolls the matching transcript entry into view.
   useEffect(() => {
@@ -29,12 +29,6 @@ export function TranscriptScreen() {
       container.scrollTo({ top: target.offsetTop - 12, behavior: 'smooth' });
     }
   }, [activeEntryIndex]);
-
-  // Sincronizar tags al cambiar de grabación
-  useEffect(() => {
-    const rec = recordings.find((r) => r.id === selectedRecordingId) ?? recordings[0];
-    setTagsInput((rec?.tags ?? []).join(', '));
-  }, [selectedRecordingId, recordings]);
 
   // Todo hook va antes de este return: si saliera antes, el número de hooks
   // cambiaría al llegar la primera grabación y React se rompería.
@@ -84,17 +78,6 @@ export function TranscriptScreen() {
       setIsRenaming(false);
       setNewTitle('');
     }
-  };
-
-  const parsedTags = tagsInput
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-  const savedTags = recording.tags ?? [];
-  const tagsDirty = parsedTags.join(',') !== savedTags.join(',');
-
-  const handleSaveTags = () => {
-    if (tagsDirty) actions.updateRecordingTags(recording.id, parsedTags);
   };
 
   return (
@@ -153,33 +136,12 @@ export function TranscriptScreen() {
 
       <div className="tags-section">
         <div className="setting-name">Etiquetas</div>
-        <div className="tags-row">
-          <input
-            type="text"
-            className="tags-input"
-            placeholder="reunión, cliente, urgente"
-            value={tagsInput}
-            onChange={(e) => setTagsInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSaveTags();
-              if (e.key === 'Escape') setTagsInput(savedTags.join(', '));
-            }}
-          />
-          <button
-            type="button"
-            className="btn-solid btn-sm"
-            disabled={!tagsDirty}
-            onClick={handleSaveTags}
-          >
-            Guardar
-          </button>
-        </div>
+        <TagInput
+          tags={recording.tags ?? []}
+          onChange={(tags) => actions.updateRecordingTags(recording.id, tags)}
+        />
         <div className="setting-hint">
-          {tagsDirty ? (
-            <span className="setting-dirty">Sin guardar · Enter para guardar</span>
-          ) : (
-            'Separadas por comas. Van al frontmatter de la nota de Obsidian.'
-          )}
+          Una coma cierra la etiqueta. Van al frontmatter de la nota de Obsidian.
         </div>
       </div>
 

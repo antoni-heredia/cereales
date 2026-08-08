@@ -634,46 +634,102 @@
   text-decoration: underline;
 }
 
-.api-key-row,
-.tags-row {
+.api-key-row {
   display: flex;
   align-items: stretch;
   gap: 8px;
   margin-top: 8px;
 }
 
-.api-key-input,
-.tags-input {
+.api-key-input {
   flex: 1;
   min-width: 0;
   padding: 10px 12px;
   border: 1px solid var(--border);
   background: var(--bg);
   font-size: 13px;
+  font-family: monospace;
 }
 
-.api-key-input {
-  font-family: monospace;
+.api-key-row .btn-solid {
+  flex-shrink: 0;
+}
+
+.api-key-row .btn-solid:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.api-key-row .btn-solid:disabled:hover {
+  background: var(--accent);
 }
 
 .tags-section {
   margin-bottom: 20px;
 }
 
-.api-key-row .btn-solid,
-.tags-row .btn-solid {
-  flex-shrink: 0;
+/* La caja entera es el campo: las fichas van dentro y el input ocupa el resto. */
+.tag-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  cursor: text;
 }
 
-.api-key-row .btn-solid:disabled,
-.tags-row .btn-solid:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.tag-input:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-tint);
 }
 
-.api-key-row .btn-solid:disabled:hover,
-.tags-row .btn-solid:disabled:hover {
-  background: var(--accent);
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 8px;
+  background: var(--surface-press);
+  font-size: 12px;
+  font-weight: var(--fw-medium);
+  line-height: 1.4;
+}
+
+.tag-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tag-remove:hover {
+  background: var(--overlay-hover);
+  color: var(--accent-deep);
+}
+
+.tag-field {
+  flex: 1;
+  min-width: 120px;
+  padding: 3px 0;
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-family: inherit;
+  color: inherit;
+}
+
+.tag-field:focus {
+  outline: none;
 }
 
 .setting-dirty {
@@ -686,8 +742,7 @@
   font-weight: var(--fw-bold);
 }
 
-.api-key-input:focus,
-.tags-input:focus {
+.api-key-input:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-tint);
