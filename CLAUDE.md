@@ -39,9 +39,16 @@ transcripción** (~490 MB).
   nombres de los comandos de Tauri y la forma de los datos están fijados en los
   dos sitios: si cambias uno, cambia el otro en el mismo commit. Rust serializa
   en camelCase vía serde.
-- **La serialización de transcripciones (TXT/Markdown/SRT) vive en TypeScript**
+- **La serialización de transcripciones vive en TypeScript**
   (`src/lib/serialize.ts`). Rust solo escribe los bytes. No añadas una segunda
-  implementación de los formatos en Rust.
+  implementación de los formatos en Rust. El **nombre** de la nota también lo
+  decide TypeScript (`transcriptRelPath`): Rust recibe una ruta relativa y solo
+  comprueba que no se salga de la raíz.
+- **Solo hay una carpeta configurable: el vault de Obsidian.** Todo cuelga de
+  `storage_root` (`src-tauri/src/storage.rs`): con vault vinculado es
+  `{vault}/transcripciones`, y si no `Documentos/cereales`. Dentro, el audio va
+  a `audio/` y las notas a `{año}/`. `Settings.storageRoot` es derivado — lo
+  recalcula `load_settings` en cada carga, no lo guardes a mano.
 - **La captura de audio es específica de Windows** (`src-tauri/src/audio/win.rs`).
   El *process loopback* necesita Windows 10 build 19041 o posterior. Al añadir
   código nativo, mantén el patrón de devolver un error explícito fuera de Windows

@@ -10,9 +10,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(audio::RecorderState::default())
         .setup(|app| {
-            // El reproductor sirve el WAV por `asset://`; la carpeta de
-            // grabaciones puede estar fuera del scope estático de la config.
-            storage::allow_recording_folder(app.handle());
+            // El reproductor sirve el WAV por `asset://`; la carpeta de audio
+            // puede estar fuera del scope estático de la config.
+            storage::allow_storage_root(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

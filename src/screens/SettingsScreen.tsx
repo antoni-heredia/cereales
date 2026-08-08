@@ -45,33 +45,24 @@ export function SettingsScreen() {
 
       <section className="settings-group">
         <h2 className="settings-group-label">Almacenamiento</h2>
-        <div>
-          <div className="setting-row">
-            <div>
-              <div className="setting-name">Carpeta de grabaciones</div>
-              <div className="setting-value">{settings.recordingFolder}</div>
-            </div>
-            <button
-              type="button"
-              className="btn-outline"
-              onClick={() => actions.pickFolder('recordingFolder')}
-            >
-              Cambiar
-            </button>
+        <div className="setting-row">
+          <div>
+            <div className="setting-name">Vault de Obsidian</div>
+            <div className="setting-value">{settings.obsidianVaultPath ?? 'Sin vincular'}</div>
           </div>
-          <div className="setting-row">
-            <div>
-              <div className="setting-name">Carpeta de transcripciones</div>
-              <div className="setting-value">{settings.transcriptFolder}</div>
-            </div>
-            <button
-              type="button"
-              className="btn-outline"
-              onClick={() => actions.pickFolder('transcriptFolder')}
-            >
-              Cambiar
-            </button>
-          </div>
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={settings.obsidianVaultPath ? actions.unlinkVault : actions.pickVault}
+          >
+            {settings.obsidianVaultPath ? 'Desvincular' : 'Vincular'}
+          </button>
+        </div>
+        <div className="setting-hint">
+          Todo se guarda en <code>{settings.storageRoot}</code>: el audio en{' '}
+          <code>audio/</code> y las notas en una carpeta por año.
+          {!settings.obsidianVaultPath &&
+            ' Vincula tu vault para que Obsidian las vea directamente.'}
         </div>
       </section>
 

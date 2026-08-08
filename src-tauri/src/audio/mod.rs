@@ -60,10 +60,7 @@ pub fn start_recording(
             return Err("Ya hay una grabación en curso.".to_string());
         }
 
-        let settings = crate::storage::load_settings(app.clone())?;
-        let folder = std::path::PathBuf::from(&settings.recording_folder);
-        std::fs::create_dir_all(&folder)
-            .map_err(|e| format!("No se pudo crear la carpeta de grabaciones: {e}"))?;
+        let folder = crate::storage::recording_dir(&app)?;
         let path = folder.join(format!("grabacion-{}.wav", timestamp()));
 
         let spec = win::SourceSpec::parse(&source_id)?;

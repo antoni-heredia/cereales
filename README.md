@@ -44,9 +44,18 @@ pero es una primera versión y se nota:
   (todo el audio del sistema) y *process loopback* para una aplicación concreta.
 - **Transcripción**: whisper.cpp vía `whisper-rs`, con el modelo `ggml-small`
   corriendo en tu CPU. El audio nunca sale de la máquina.
-- **Almacenamiento**: los ajustes y el índice de grabaciones viven en la carpeta
-  de configuración de la app; las transcripciones se escriben en la carpeta que
-  elijas, en TXT, Markdown o SRT.
+- **Almacenamiento**: hay una sola carpeta que elegir, el vault de Obsidian.
+  Dentro de `transcripciones/` va el audio en `audio/` y las notas agrupadas por
+  año. Sin vault vinculado se usa `Documentos/cereales` con esa misma estructura.
+
+### Pensado para Obsidian
+
+El formato por defecto es una nota de Obsidian: frontmatter con la fecha, la
+duración y tus etiquetas, el audio embebido con `![[…]]` para reproducirlo desde
+la propia nota, y las notas que tomaste durante la reunión como *callouts*
+pegados a la frase en la que las escribiste. Las etiquetas se editan en la
+pantalla de la grabación. Siguen estando TXT, Markdown y SRT en Ajustes para
+quien los quiera.
 
 ### Solo Windows
 
@@ -161,7 +170,7 @@ src/
   state/store.tsx  Estado de la app (contexto de React)
   screens/         Grabar · Historial · Ajustes · Transcripción
   components/      Sidebar, SourcePicker, Waveform
-  lib/             Formato de tiempo y serialización TXT/Markdown/SRT
+  lib/             Formato de tiempo, serialización y nombre de las notas
   styles/          tokens.css (paleta del prototipo) + global.css + app.css
 src-tauri/src/
   audio/win.rs     Captura WASAPI: enumeración y los tres modos

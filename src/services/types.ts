@@ -43,12 +43,17 @@ export interface TranscriptionService {
 
 export interface StorageService {
   loadSettings(): Promise<Settings>;
-  saveSettings(settings: Settings): Promise<void>;
+  /** Resuelve con los ajustes recargados: `storageRoot` es derivado. */
+  saveSettings(settings: Settings): Promise<Settings>;
 
   listRecordings(): Promise<Recording[]>;
   saveRecording(recording: Recording): Promise<void>;
   deleteRecording(recordingId: string): Promise<void>;
-  renameRecording(recordingId: string, newTitle: string): Promise<void>;
+  /**
+   * El título va en el nombre de la nota, así que renombrar también la mueve a
+   * `newRelPath` (calculado con `transcriptRelPath`).
+   */
+  renameRecording(recordingId: string, newTitle: string, newRelPath: string): Promise<void>;
   /** URL reproducible por `<audio>` para el WAV en `audioPath`. */
   audioUrl(audioPath: string): string;
 

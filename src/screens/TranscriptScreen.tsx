@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { TagInput } from '@/components/TagInput';
 import { formatRecordingDate, formatTime, nearestEntryIndex } from '@/lib/format';
 import { useApp } from '@/state/store';
 
@@ -132,6 +133,17 @@ export function TranscriptScreen() {
         </div>
       </div>
       <div className="rule" />
+
+      <div className="tags-section">
+        <div className="setting-name">Etiquetas</div>
+        <TagInput
+          tags={recording.tags ?? []}
+          onChange={(tags) => actions.updateRecordingTags(recording.id, tags)}
+        />
+        <div className="setting-hint">
+          Una coma cierra la etiqueta. Van al frontmatter de la nota de Obsidian.
+        </div>
+      </div>
 
       {error && (
         <div className="error-card" role="alert" onClick={actions.dismissError}>

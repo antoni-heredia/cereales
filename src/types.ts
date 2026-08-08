@@ -27,6 +27,8 @@ export interface Recording {
   audioPath?: string;
   /** Absolute path to the written transcript, once transcription finishes. */
   transcriptPath?: string;
+  /** Tags para categorizar la grabación en Obsidian. */
+  tags?: string[];
 }
 
 export interface TranscriptEntry {
@@ -63,12 +65,17 @@ export interface Transcript {
   notes: Note[];
 }
 
-export const TRANSCRIPT_FORMATS = ['TXT', 'Markdown', 'SRT'] as const;
+export const TRANSCRIPT_FORMATS = ['TXT', 'Markdown', 'SRT', 'Obsidian'] as const;
 export type TranscriptFormat = (typeof TRANSCRIPT_FORMATS)[number];
 
 export interface Settings {
-  recordingFolder: string;
-  transcriptFolder: string;
+  /**
+   * Vault de Obsidian: la única carpeta que elige el usuario. Vinculado, el
+   * audio y las notas viven dentro; sin vincular, en Documentos.
+   */
+  obsidianVaultPath: string | null;
+  /** Solo lectura: dónde acaba todo. Lo calcula el backend al cargar. */
+  storageRoot: string;
   defaultSourceId: string;
   transcriptFormat: TranscriptFormat;
   transcriptionService: 'local' | 'elevenlabs';
