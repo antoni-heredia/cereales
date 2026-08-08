@@ -5,18 +5,23 @@
  */
 import { SAMPLE_NOTES, SAMPLE_RECORDINGS, SAMPLE_SOURCES, SAMPLE_TRANSCRIPT } from '@/fixtures';
 import type { Recording, Settings, Transcript, TranscriptEntry, TranscriptFormat } from '@/types';
-import { serializeTranscript, transcriptExtension } from '@/lib/serialize';
+import { serializeTranscript, transcriptRelPath } from '@/lib/serialize';
 import type { AudioService, StopResult, StorageService, TranscriptionService } from './types';
 
 export const DEFAULT_SETTINGS: Settings = {
-  recordingFolder: '~/Documents/cereales/grabaciones',
-  transcriptFolder: '~/Documents/cereales/transcripciones',
   obsidianVaultPath: null,
+  storageRoot: '~/Documents/cereales',
   defaultSourceId: 'sys:default',
   transcriptFormat: 'Obsidian',
   transcriptionService: 'local',
   elevenLabsApiKey: '',
 };
+
+/** Espejo de `storage_root` en Rust, para que el mock enseñe la misma ruta. */
+function storageRoot(settings: Settings): string {
+  const vault = settings.obsidianVaultPath?.trim();
+  return vault ? `${vault}/transcripciones` : '~/Documents/cereales';
+}
 
 const KEY_SETTINGS = 'cereales.settings';
 const KEY_RECORDINGS = 'cereales.recordings';
@@ -56,7 +61,10 @@ export const mockAudio: AudioService = {
   async stop(): Promise<StopResult> {
     const durationSec = startedAt ? Math.round((Date.now() - startedAt) / 1000) : 0;
     startedAt = null;
-    return { audioPath: `${DEFAULT_SETTINGS.recordingFolder}/mock-${Date.now()}.wav`, durationSec };
+    return {
+      audioPath: `${DEFAULT_SETTINGS.storageRoot}/audio/mock-${Date.now()}.wav`,
+      durationSec,
+    };
   },
 
   onLevels() {
@@ -86,11 +94,13 @@ export const mockTranscription: TranscriptionService = {
 
 export const mockStorage: StorageService = {
   async loadSettings() {
-    return { ...DEFAULT_SETTINGS, ...readJson<Partial<Settings>>(KEY_SETTINGS, {}) };
+    const stored = { ...DEFAULT_SETTINGS, ...readJson<Partial<Settings>>(KEY_SETTINGS, {}) };
+    return { ...stored, storageRoot: storageRoot(stored) };
   },
 
   async saveSettings(settings) {
     writeJson(KEY_SETTINGS, settings);
+    return { ...settings, storageRoot: storageRoot(settings) };
   },
 
   async listRecordings() {
@@ -107,7 +117,7 @@ export const mockStorage: StorageService = {
     writeJson(KEY_RECORDINGS, existing.filter((r) => r.id !== recordingId));
   },
 
-  async renameRecording(recordingId, newTitle) {
+  async renameRecording(recordingId, newTitle, _newRelPath) {
     const existing = readJson<Recording[]>(KEY_RECORDINGS, SAMPLE_RECORDINGS);
     const recording = existing.find((r) => r.id === recordingId);
     if (recording) {
@@ -133,7 +143,7 @@ export const mockStorage: StorageService = {
     writeJson(KEY_TRANSCRIPT + recording.id, transcript);
     // Serialized here too so the format logic is exercised in mock mode.
     serializeTranscript(recording, transcript, format);
-    return `${DEFAULT_SETTINGS.transcriptFolder}/${recording.id}.${transcriptExtension(format)}`;
+    return `${DEFAULT_SETTINGS.storageRoot}/${transcriptRelPath(recording, format)}`;
   },
 
   async pickFolder(_title, current) {

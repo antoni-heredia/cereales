@@ -35,10 +35,9 @@ export function Sidebar() {
         ))}
       </div>
 
-      <div className="folder-badge">
-        Grabaciones: <strong>{folderLeaf(settings.recordingFolder)}</strong>
-        <br />
-        Transcripciones: <strong>{folderLeaf(settings.transcriptFolder)}</strong>
+      <div className="folder-badge" title={settings.storageRoot}>
+        {settings.obsidianVaultPath ? 'Obsidian' : 'Guardando en'}:{' '}
+        <strong>{folderLeaf(settings.obsidianVaultPath ?? settings.storageRoot)}</strong>
       </div>
     </nav>
   );

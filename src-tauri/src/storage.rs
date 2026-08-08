@@ -1,12 +1,15 @@
 //! Settings, recording index and transcript persistence.
 //!
-//! Settings and the recording index live in the app config directory. Rendered
-//! transcripts go to the user-chosen transcript folder; a JSON sidecar is kept
-//! alongside the index so `load_transcript` can round-trip structured data
-//! regardless of which output format the user picked.
+//! Todo lo que el usuario ve cuelga de una sola raíz: el vault de Obsidian si
+//! lo ha vinculado, y si no una carpeta en Documentos. Dentro de esa raíz el
+//! audio va a `audio/` y las notas a `{año}/`, que es la forma en la que
+//! Obsidian espera encontrarlas. El JSON estructurado de cada transcripción se
+//! queda aparte, en la carpeta de configuración, para poder recargarla sea cual
+//! sea el formato que se exportó.
 
+use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
@@ -24,21 +27,32 @@ fn sidecar_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn default_settings(app: &AppHandle) -> Settings {
-    let base = app
-        .path()
+/// Dónde se guarda todo mientras no haya vault vinculado.
+fn default_root(app: &AppHandle) -> PathBuf {
+    app.path()
         .document_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
-        .join("cereales");
-    Settings {
-        recording_folder: base.join("grabaciones").to_string_lossy().into_owned(),
-        transcript_folder: base.join("transcripciones").to_string_lossy().into_owned(),
-        obsidian_vault_path: None,
-        default_source_id: String::new(),
-        transcript_format: "Markdown".to_string(),
-        transcription_service: "local".to_string(),
-        eleven_labs_api_key: String::new(),
+        .join("cereales")
+}
+
+/// Raíz de audio y notas. Con Obsidian vinculado es una subcarpeta del vault,
+/// no el vault entero: así las notas no se mezclan con el resto de la bóveda.
+fn storage_root(app: &AppHandle, settings: &Settings) -> PathBuf {
+    match settings.obsidian_vault_path.as_deref() {
+        Some(vault) if !vault.trim().is_empty() => PathBuf::from(vault).join("transcripciones"),
+        _ => default_root(app),
     }
+}
+
+fn audio_dir(app: &AppHandle, settings: &Settings) -> PathBuf {
+    storage_root(app, settings).join("audio")
+}
+
+/// Carpetas de versiones anteriores. Se siguen leyendo para que el historial no
+/// se vacíe al actualizar ni al vincular un vault.
+fn legacy_audio_dirs(app: &AppHandle) -> Vec<PathBuf> {
+    let base = default_root(app);
+    vec![base.join("grabaciones"), base]
 }
 
 /// Rejects path separators so a recording id can never escape its directory.
@@ -53,50 +67,103 @@ fn safe_id(recording_id: &str) -> Result<&str, String> {
     Ok(recording_id)
 }
 
-#[tauri::command]
-pub fn load_settings(app: AppHandle) -> Result<Settings, String> {
-    let path = config_dir(&app)?.join("settings.json");
-    match fs::read_to_string(&path) {
-        Ok(raw) => serde_json::from_str(&raw).map_err(|e| e.to_string()),
-        // No settings file yet (first launch) — hand back the defaults.
-        Err(_) => Ok(default_settings(&app)),
+/// El frontend decide cómo se llaman las notas (`2026/2026-08-08-titulo.md`);
+/// aquí solo se comprueba que la ruta se queda dentro de la raíz.
+fn safe_rel_path(rel: &str) -> Result<PathBuf, String> {
+    let candidate = Path::new(rel);
+    let ok = !rel.is_empty()
+        && !candidate.is_absolute()
+        && candidate
+            .components()
+            .all(|c| matches!(c, Component::Normal(_)));
+    if !ok {
+        return Err(format!("Ruta de transcripción inválida: {rel}"));
+    }
+    Ok(candidate.to_path_buf())
+}
+
+fn default_settings() -> Settings {
+    Settings {
+        obsidian_vault_path: None,
+        // Lo rellena `load_settings`, que es quien sabe la ruta real.
+        storage_root: String::new(),
+        default_source_id: String::new(),
+        transcript_format: "Obsidian".to_string(),
+        transcription_service: "local".to_string(),
+        eleven_labs_api_key: String::new(),
     }
 }
 
 #[tauri::command]
-pub fn save_settings(app: AppHandle, settings: Settings) -> Result<(), String> {
+pub fn load_settings(app: AppHandle) -> Result<Settings, String> {
+    let path = config_dir(&app)?.join("settings.json");
+    let mut settings: Settings = match fs::read_to_string(&path) {
+        Ok(raw) => serde_json::from_str(&raw).map_err(|e| e.to_string())?,
+        // No settings file yet (first launch) — hand back the defaults.
+        Err(_) => default_settings(),
+    };
+    // Campo derivado: manda el vault, no lo que hubiera guardado en disco.
+    settings.storage_root = storage_root(&app, &settings).to_string_lossy().into_owned();
+    Ok(settings)
+}
+
+/// Devuelve los ajustes ya recargados: `storageRoot` cambia al vincular un
+/// vault, y el frontend lo enseña, así que tiene que recibirlo de vuelta.
+#[tauri::command]
+pub fn save_settings(app: AppHandle, settings: Settings) -> Result<Settings, String> {
     let path = config_dir(&app)?.join("settings.json");
     let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     fs::write(path, json).map_err(|e| e.to_string())?;
     // La carpeta puede haber cambiado: el reproductor necesita verla.
-    allow_recording_folder(&app);
-    Ok(())
+    allow_storage_root(&app);
+    load_settings(app)
 }
 
-/// El historial es la carpeta de grabaciones: cada `X.wav` es una entrada, y su
-/// `X.json` de al lado guarda título, fecha y duración. Sin índice central, así
-/// que copiar la carpeta basta para llevarse el historial entero.
+/// El historial es la carpeta de audio: cada `X.wav` es una entrada, y su
+/// `X.json` de al lado guarda título, fecha, duración y etiquetas. Sin índice
+/// central, así que copiar la carpeta basta para llevarse el historial entero.
 #[tauri::command]
 pub fn list_recordings(app: AppHandle) -> Result<Vec<Recording>, String> {
-    let settings = load_settings(app)?;
-    let recording_dir = PathBuf::from(&settings.recording_folder);
-    if !recording_dir.exists() {
-        return Ok(Vec::new());
-    }
+    let settings = load_settings(app.clone())?;
+
+    let mut dirs = vec![audio_dir(&app, &settings)];
+    dirs.extend(legacy_audio_dirs(&app));
 
     let mut recordings = Vec::new();
-    for entry in fs::read_dir(&recording_dir).map_err(|e| e.to_string())? {
-        let path = entry.map_err(|e| e.to_string())?.path();
+    let mut seen = HashSet::new();
+    for dir in dirs {
+        collect_recordings(&dir, &mut recordings, &mut seen);
+    }
+
+    // El nombre lleva la marca de tiempo, así que el orden alfabético inverso
+    // deja las más recientes arriba.
+    recordings.sort_by(|a, b| b.id.cmp(&a.id));
+    Ok(recordings)
+}
+
+/// Añade a `out` las grabaciones de `dir`. Una carpeta que no existe no es un
+/// error: las heredadas solo están si esa versión llegó a usarse.
+fn collect_recordings(dir: &Path, out: &mut Vec<Recording>, seen: &mut HashSet<String>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("wav") {
             continue;
         }
         let Some(id) = path.file_stem().and_then(|n| n.to_str()) else {
             continue;
         };
+        // La carpeta nueva gana: si una grabación se copió a las dos, la de
+        // `audio/` es la que se está usando.
+        if !seen.insert(id.to_string()) {
+            continue;
+        }
 
         // Un .json ausente o corrupto no puede esconder la grabación: el audio
         // existe, así que se muestra con lo que se pueda deducir del archivo.
-        let mut recording = fs::read_to_string(recording_dir.join(format!("{id}.json")))
+        let mut recording = fs::read_to_string(dir.join(format!("{id}.json")))
             .ok()
             .and_then(|raw| serde_json::from_str::<Recording>(&raw).ok())
             .unwrap_or_else(|| Recording {
@@ -111,18 +178,13 @@ pub fn list_recordings(app: AppHandle) -> Result<Vec<Recording>, String> {
         // La ruta buena es la del archivo que acabamos de encontrar; la
         // guardada se queda obsoleta si se mueve la carpeta.
         recording.audio_path = Some(path.to_string_lossy().into_owned());
-        recordings.push(recording);
+        out.push(recording);
     }
-
-    // El nombre lleva la marca de tiempo, así que el orden alfabético inverso
-    // deja las más recientes arriba.
-    recordings.sort_by(|a, b| b.id.cmp(&a.id));
-    Ok(recordings)
 }
 
 /// Duración leyendo solo la cabecera del WAV, para las grabaciones que se
 /// quedaron sin metadatos.
-fn wav_duration_sec(path: &std::path::Path) -> u64 {
+fn wav_duration_sec(path: &Path) -> u64 {
     hound::WavReader::open(path)
         .map(|r| {
             let rate = r.spec().sample_rate.max(1) as u64;
@@ -131,17 +193,29 @@ fn wav_duration_sec(path: &std::path::Path) -> u64 {
         .unwrap_or(0)
 }
 
+/// Los metadatos van pegados al WAV, que puede seguir en una carpeta heredada.
+fn metadata_path(app: &AppHandle, settings: &Settings, recording: &Recording) -> PathBuf {
+    let name = format!("{}.json", recording.id);
+    recording
+        .audio_path
+        .as_deref()
+        .map(Path::new)
+        .and_then(|p| p.parent())
+        .map(|dir| dir.join(&name))
+        .unwrap_or_else(|| audio_dir(app, settings).join(&name))
+}
+
 #[tauri::command]
 pub fn save_recording(app: AppHandle, recording: Recording) -> Result<(), String> {
-    let settings = load_settings(app)?;
-    let recording_dir = PathBuf::from(&settings.recording_folder);
-    fs::create_dir_all(&recording_dir).map_err(|e| e.to_string())?;
+    let _ = safe_id(&recording.id)?;
+    let settings = load_settings(app.clone())?;
 
-    // Guardar metadatos en archivo .json junto al .wav
-    let id = safe_id(&recording.id)?;
-    let metadata_path = recording_dir.join(format!("{}.json", id));
+    let path = metadata_path(&app, &settings, &recording);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     let json = serde_json::to_string_pretty(&recording).map_err(|e| e.to_string())?;
-    fs::write(metadata_path, json).map_err(|e| e.to_string())
+    fs::write(path, json).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -155,185 +229,134 @@ pub fn load_transcript(app: AppHandle, recording_id: String) -> Result<Option<Tr
 }
 
 /// Writes the already-serialized transcript body, plus the JSON sidecar.
-/// Returns the path of the rendered transcript.
+/// `rel_path` viene del frontend (`2026/2026-08-08-titulo.md`) y se resuelve
+/// contra la raíz. Devuelve la ruta absoluta de la nota escrita.
 #[tauri::command]
 pub fn write_transcript(
     app: AppHandle,
     recording_id: String,
     contents: String,
-    extension: String,
+    rel_path: String,
     transcript: Transcript,
 ) -> Result<String, String> {
     let id = safe_id(&recording_id)?;
+    let rel = safe_rel_path(&rel_path)?;
 
     let sidecar = sidecar_dir(&app)?.join(format!("{id}.json"));
     let json = serde_json::to_string_pretty(&transcript).map_err(|e| e.to_string())?;
     fs::write(sidecar, json).map_err(|e| e.to_string())?;
 
     let settings = load_settings(app.clone())?;
-
-    // Determinar la carpeta de salida según si Obsidian está vinculado
-    let (folder, copy_audio_to) = if let Some(vault_path) = &settings.obsidian_vault_path {
-        // Extraer año de la grabación (formato YYYY-MM-DD-...)
-        let year = &recording_id[..4];
-        let obsidian_folder = PathBuf::from(vault_path)
-            .join("transcripciones")
-            .join(year);
-        let audio_folder = PathBuf::from(vault_path).join("transcripciones").join("Audio");
-        (obsidian_folder, Some(audio_folder))
-    } else {
-        (
-            PathBuf::from(&settings.transcript_folder),
-            None,
-        )
-    };
-
-    fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
-
-    let out = folder.join(format!("{id}.{extension}"));
-    fs::write(&out, contents).map_err(|e| e.to_string())?;
-
-    // Si Obsidian está vinculado, copiar el archivo de audio
-    if let Some(audio_folder) = copy_audio_to {
-        if let Ok(recordings) = list_recordings(app) {
-            if let Some(recording) = recordings.iter().find(|r| r.id == recording_id) {
-                if let Some(audio_path) = &recording.audio_path {
-                    fs::create_dir_all(&audio_folder).map_err(|e| e.to_string())?;
-                    let audio_file_name = format!("{}.wav", id);
-                    let dest = audio_folder.join(&audio_file_name);
-                    let _ = fs::copy(audio_path, dest);
-                }
-            }
-        }
+    let out = storage_root(&app, &settings).join(rel);
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-
+    fs::write(&out, contents).map_err(|e| e.to_string())?;
     Ok(out.to_string_lossy().into_owned())
 }
 
-/// Borra una grabación (audio, metadatos y transcripción)
+/// Borra una grabación: audio, metadatos, nota y JSON estructurado.
 #[tauri::command]
 pub fn delete_recording(app: AppHandle, recording_id: String) -> Result<(), String> {
     let id = safe_id(&recording_id)?;
     let settings = load_settings(app.clone())?;
-    let recording_dir = PathBuf::from(&settings.recording_folder);
+    let recording = list_recordings(app.clone())?
+        .into_iter()
+        .find(|r| r.id == recording_id);
 
-    // Borrar archivo .wav
-    let audio_path = recording_dir.join(format!("{}.wav", id));
-    if audio_path.exists() {
-        fs::remove_file(&audio_path).map_err(|e| e.to_string())?;
-    }
-
-    // Borrar archivo .json de metadatos
-    let metadata_path = recording_dir.join(format!("{}.json", id));
-    if metadata_path.exists() {
-        fs::remove_file(&metadata_path).map_err(|e| e.to_string())?;
-    }
-
-    // Borrar transcripción si existe
-    let sidecar = sidecar_dir(&app)?.join(format!("{}.json", id));
-    if sidecar.exists() {
-        fs::remove_file(&sidecar).map_err(|e| e.to_string())?;
-    }
-
-    // Borrar archivos de transcripción renderizados
-    let transcript_dir = PathBuf::from(&settings.transcript_folder);
-    for ext in &["txt", "md", "srt"] {
-        let transcript_path = transcript_dir.join(format!("{}.{}", id, ext));
-        if transcript_path.exists() {
-            let _ = fs::remove_file(&transcript_path);
+    if let Some(recording) = &recording {
+        // Las rutas guardadas mandan: así se borra donde de verdad está el
+        // archivo, aunque sea una carpeta heredada.
+        if let Some(audio) = &recording.audio_path {
+            let _ = fs::remove_file(audio);
+        }
+        let _ = fs::remove_file(metadata_path(&app, &settings, recording));
+        if let Some(note) = &recording.transcript_path {
+            let _ = fs::remove_file(note);
         }
     }
 
-    // Si Obsidian está vinculado, borrar también los archivos allí
-    if let Some(vault_path) = settings.obsidian_vault_path {
-        let year = &recording_id[..4];
-        let obsidian_path = PathBuf::from(&vault_path)
-            .join("transcripciones")
-            .join(year)
-            .join(format!("{}.md", id));
-        if obsidian_path.exists() {
-            let _ = fs::remove_file(&obsidian_path);
-        }
-
-        // Borrar audio de Obsidian si existe
-        let audio_path = PathBuf::from(&vault_path)
-            .join("transcripciones")
-            .join("Audio")
-            .join(format!("{}.wav", id));
-        if audio_path.exists() {
-            let _ = fs::remove_file(&audio_path);
-        }
-    }
+    let sidecar = sidecar_dir(&app)?.join(format!("{id}.json"));
+    let _ = fs::remove_file(sidecar);
 
     Ok(())
 }
 
-/// Renombra una grabación (metadata y archivos asociados)
+/// Renombra una grabación. La nota lleva el título en el nombre del archivo, así
+/// que hay que moverla: si no, Obsidian se queda con el nombre viejo y la
+/// siguiente transcripción crearía una nota duplicada al lado.
 #[tauri::command]
 pub fn rename_recording(
     app: AppHandle,
     recording_id: String,
     new_title: String,
+    new_rel_path: String,
 ) -> Result<(), String> {
-    let id = safe_id(&recording_id)?;
+    let _ = safe_id(&recording_id)?;
+    let settings = load_settings(app.clone())?;
 
-    // Cargar la grabación existente
-    let mut all = list_recordings(app.clone())?;
-    let recording = all
-        .iter_mut()
+    let mut recording = list_recordings(app.clone())?
+        .into_iter()
         .find(|r| r.id == recording_id)
         .ok_or_else(|| "Grabación no encontrada".to_string())?;
+    recording.title = new_title;
 
-    let old_title = recording.title.clone();
-    // Actualizar el título
-    recording.title = new_title.clone();
-
-    // Guardar metadatos actualizados
-    let settings = load_settings(app)?;
-    let recording_dir = PathBuf::from(&settings.recording_folder);
-    let metadata_path = recording_dir.join(format!("{}.json", id));
-    let json = serde_json::to_string_pretty(&recording).map_err(|e| e.to_string())?;
-    fs::write(metadata_path, json).map_err(|e| e.to_string())?;
-
-    // Si Obsidian está vinculado, renombrar el archivo de audio
-    if let Some(vault_path) = settings.obsidian_vault_path {
-        let audio_folder = PathBuf::from(&vault_path).join("transcripciones").join("Audio");
-
-        // Generar nombres antiguos y nuevos basados en la fecha y título
-        let date_part = &recording_id[..10]; // YYYY-MM-DD
-        let old_audio_name = format!(
-            "{}-{}.wav",
-            date_part,
-            old_title.to_lowercase().replace(' ', "-")
-        );
-        let new_audio_name = format!(
-            "{}-{}.wav",
-            date_part,
-            new_title.to_lowercase().replace(' ', "-")
-        );
-
-        let old_path = audio_folder.join(&old_audio_name);
-        let new_path = audio_folder.join(&new_audio_name);
-
-        // Renombrar si el archivo antiguo existe y el nuevo nombre es diferente
-        if old_path.exists() && old_audio_name != new_audio_name {
-            let _ = fs::rename(&old_path, &new_path);
+    if let Some(old) = recording.transcript_path.clone() {
+        let old_path = PathBuf::from(&old);
+        let dest = storage_root(&app, &settings).join(safe_rel_path(&new_rel_path)?);
+        if old_path.exists() && old_path != dest {
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            fs::rename(&old_path, &dest).map_err(|e| e.to_string())?;
+            recording.transcript_path = Some(dest.to_string_lossy().into_owned());
         }
     }
 
-    Ok(())
+    let path = metadata_path(&app, &settings, &recording);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(&recording).map_err(|e| e.to_string())?;
+    fs::write(path, json).map_err(|e| e.to_string())
 }
 
-/// Abre la carpeta de grabaciones al protocolo `asset://`, para que el
-/// reproductor pueda pedirla por HTTP interno (con soporte de Range, y sin
-/// cargar el WAV entero en memoria como haría un data URL).
+/// Carpeta donde el grabador deja el WAV. Es la única que la crea antes de
+/// tiempo, porque WASAPI necesita el archivo abierto desde el primer paquete.
+pub fn recording_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let settings = load_settings(app.clone())?;
+    let dir = audio_dir(app, &settings);
+    fs::create_dir_all(&dir).map_err(|e| format!("No se pudo crear la carpeta de audio: {e}"))?;
+    Ok(dir)
+}
+
+/// Abre la carpeta de audio al protocolo `asset://`, para que el reproductor
+/// pueda pedirla por HTTP interno (con soporte de Range, y sin cargar el WAV
+/// entero en memoria como haría un data URL).
 ///
-/// El scope estático de `tauri.conf.json` solo cubre $HOME y $DOCUMENT; la
-/// carpeta es configurable, así que se amplía en tiempo de ejecución.
-pub fn allow_recording_folder(app: &AppHandle) {
-    if let Ok(settings) = load_settings(app.clone()) {
-        let _ = app
-            .asset_protocol_scope()
-            .allow_directory(&settings.recording_folder, false);
+/// El scope estático de `tauri.conf.json` solo cubre $HOME y $DOCUMENT; el vault
+/// puede estar en cualquier unidad, así que se amplía en tiempo de ejecución.
+pub fn allow_storage_root(app: &AppHandle) {
+    let Ok(settings) = load_settings(app.clone()) else {
+        return;
+    };
+    let scope = app.asset_protocol_scope();
+    let _ = scope.allow_directory(audio_dir(app, &settings), false);
+    for dir in legacy_audio_dirs(app) {
+        let _ = scope.allow_directory(dir, false);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn una_ruta_relativa_no_puede_salirse_de_la_raiz() {
+        assert!(safe_rel_path("2026/2026-08-08-reunion.md").is_ok());
+        assert!(safe_rel_path("").is_err());
+        assert!(safe_rel_path("../fuera.md").is_err());
+        assert!(safe_rel_path("2026/../../fuera.md").is_err());
+        assert!(safe_rel_path("/absoluta.md").is_err());
     }
 }

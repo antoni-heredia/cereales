@@ -11,6 +11,7 @@ import {
 import { services, updateServices } from '@/services';
 import { DEFAULT_SETTINGS } from '@/services/mock';
 import { nearestEntryIndex } from '@/lib/format';
+import { transcriptRelPath } from '@/lib/serialize';
 import type {
   AudioSource,
   ModelStatus,
@@ -65,7 +66,9 @@ interface AppActions {
   jumpToNote: (timeSec: number) => void;
   updateSettings: (patch: Partial<Settings>) => void;
   setTranscriptFormat: (format: TranscriptFormat) => void;
-  pickFolder: (which: 'recordingFolder' | 'transcriptFolder' | 'obsidianVaultPath') => void;
+  /** Abre el selector para vincular el vault de Obsidian. */
+  pickVault: () => void;
+  unlinkVault: () => void;
   downloadModel: () => void;
   dismissError: () => void;
 }
@@ -284,45 +287,50 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [transcript],
   );
 
+  /**
+   * Guarda y se queda con lo que devuelve el backend: `storageRoot` es derivado
+   * del vault, así que el valor local se quedaría atrás al vincularlo.
+   */
   const persistSettings = useCallback((next: Settings) => {
     setSettings(next);
     updateServices(next);
-    void services.storage.saveSettings(next).catch((err) => setError(describeError(err)));
+    void services.storage
+      .saveSettings(next)
+      .then((saved) => {
+        setSettings(saved);
+        updateServices(saved);
+      })
+      .catch((err) => setError(describeError(err)));
   }, []);
 
   const updateSettings = useCallback(
     (patch: Partial<Settings>) => {
       setSettings((prev) => {
         const next = { ...prev, ...patch };
-        updateServices(next);
-        void services.storage.saveSettings(next).catch((err) => setError(describeError(err)));
+        persistSettings(next);
         return next;
       });
     },
-    [],
+    [persistSettings],
   );
 
-  const pickFolder = useCallback(
-    (which: 'recordingFolder' | 'transcriptFolder' | 'obsidianVaultPath') => {
-      const titleMap = {
-        recordingFolder: 'Carpeta de grabaciones',
-        transcriptFolder: 'Carpeta de transcripciones',
-        obsidianVaultPath: 'Vault de Obsidian',
-      };
-      const title = titleMap[which];
-      void (async () => {
-        try {
-          const current = settings[which];
-          const currentPath = (typeof current === 'string' ? current : '') || '';
-          const picked = await services.storage.pickFolder(title, currentPath);
-          if (picked) persistSettings({ ...settings, [which]: picked });
-        } catch (err) {
-          setError(describeError(err));
-        }
-      })();
-    },
-    [persistSettings, settings],
-  );
+  const pickVault = useCallback(() => {
+    void (async () => {
+      try {
+        const picked = await services.storage.pickFolder(
+          'Vault de Obsidian',
+          settings.obsidianVaultPath ?? '',
+        );
+        if (picked) persistSettings({ ...settings, obsidianVaultPath: picked });
+      } catch (err) {
+        setError(describeError(err));
+      }
+    })();
+  }, [persistSettings, settings]);
+
+  const unlinkVault = useCallback(() => {
+    persistSettings({ ...settings, obsidianVaultPath: null });
+  }, [persistSettings, settings]);
 
   const transcribeRecording = useCallback(
     (recordingId: string) => {
@@ -375,37 +383,37 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     })();
   }, [selectedRecordingId]);
 
-  const renameRecording = useCallback((recordingId: string, newTitle: string) => {
-    setError(null);
-    void (async () => {
-      try {
-        await services.storage.renameRecording(recordingId, newTitle);
-        setRecordings((prev) =>
-          prev.map((r) => (r.id === recordingId ? { ...r, title: newTitle } : r)),
-        );
-        setTranscript((prev) => (prev?.recordingId === recordingId ? prev : prev));
-      } catch (err) {
-        setError(describeError(err));
-      }
-    })();
-  }, []);
-
-  const updateRecordingTags = useCallback((recordingId: string, tags: string[]) => {
-    setError(null);
-    setRecordings((prev) =>
-      prev.map((r) => (r.id === recordingId ? { ...r, tags } : r)),
-    );
-    void (async () => {
-      try {
-        const updated = [...recordings].find((r) => r.id === recordingId);
-        if (updated) {
-          await services.storage.saveRecording({ ...updated, tags });
+  const renameRecording = useCallback(
+    (recordingId: string, newTitle: string) => {
+      setError(null);
+      const current = recordings.find((r) => r.id === recordingId);
+      if (!current) return;
+      // El título va en el nombre del archivo, así que la nota se mueve con él.
+      const renamed = { ...current, title: newTitle };
+      const relPath = transcriptRelPath(renamed, settings.transcriptFormat);
+      void (async () => {
+        try {
+          await services.storage.renameRecording(recordingId, newTitle, relPath);
+          setRecordings((prev) => prev.map((r) => (r.id === recordingId ? renamed : r)));
+        } catch (err) {
+          setError(describeError(err));
         }
-      } catch (err) {
-        setError(describeError(err));
-      }
-    })();
-  }, [recordings]);
+      })();
+    },
+    [recordings, settings.transcriptFormat],
+  );
+
+  const updateRecordingTags = useCallback(
+    (recordingId: string, tags: string[]) => {
+      setError(null);
+      const current = recordings.find((r) => r.id === recordingId);
+      if (!current) return;
+      const tagged = { ...current, tags };
+      setRecordings((prev) => prev.map((r) => (r.id === recordingId ? tagged : r)));
+      void services.storage.saveRecording(tagged).catch((err) => setError(describeError(err)));
+    },
+    [recordings],
+  );
 
   const audioUrl = useCallback((audioPath: string) => services.storage.audioUrl(audioPath), []);
 
@@ -449,7 +457,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       jumpToNote,
       updateSettings,
       setTranscriptFormat: (format) => updateSettings({ transcriptFormat: format }),
-      pickFolder,
+      pickVault,
+      unlinkVault,
       downloadModel,
       dismissError: () => setError(null),
     }),
@@ -460,8 +469,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       downloadModel,
       jumpToNote,
       openRecording,
-      pickFolder,
+      pickVault,
       renameRecording,
+      unlinkVault,
       resetRecorder,
       startRecording,
       stopRecording,

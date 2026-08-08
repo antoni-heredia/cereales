@@ -58,15 +58,25 @@ fn default_transcription_service() -> String {
     "local".to_string()
 }
 
+fn default_transcript_format() -> String {
+    "Obsidian".to_string()
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
-    pub recording_folder: String,
-    pub transcript_folder: String,
+    /// Vault de Obsidian. Es la única carpeta que elige el usuario: cuando está
+    /// puesta, audio y notas viven dentro. Sin ella se usa la de Documentos.
     #[serde(default)]
     pub obsidian_vault_path: Option<String>,
+    /// Derivado, no configurable: la carpeta donde acaba todo. `load_settings`
+    /// lo recalcula en cada carga, así que lo que haya en disco da igual.
+    #[serde(default)]
+    pub storage_root: String,
+    #[serde(default)]
     pub default_source_id: String,
     /// "TXT" | "Markdown" | "SRT" | "Obsidian"
+    #[serde(default = "default_transcript_format")]
     pub transcript_format: String,
     /// "local" | "elevenlabs"
     #[serde(default = "default_transcription_service")]
@@ -95,8 +105,6 @@ mod tests {
     #[test]
     fn los_ajustes_sobreviven_la_ida_y_vuelta() {
         let json = r#"{
-            "recordingFolder": "C:\\audio",
-            "transcriptFolder": "C:\\texto",
             "obsidianVaultPath": "G:\\Mi unidad\\obsidian\\Personal",
             "defaultSourceId": "sys:default",
             "transcriptFormat": "Obsidian",
@@ -107,7 +115,10 @@ mod tests {
         let parsed: Settings = serde_json::from_str(json).expect("debería deserializar");
         assert_eq!(parsed.transcription_service, "elevenlabs");
         assert_eq!(parsed.eleven_labs_api_key, "sk_secreto");
-        assert_eq!(parsed.obsidian_vault_path, Some("G:\\Mi unidad\\obsidian\\Personal".to_string()));
+        assert_eq!(
+            parsed.obsidian_vault_path,
+            Some("G:\\Mi unidad\\obsidian\\Personal".to_string())
+        );
 
         let vuelta = serde_json::to_string(&parsed).expect("debería serializar");
         assert!(vuelta.contains("\"transcriptionService\":\"elevenlabs\""), "salió: {vuelta}");
@@ -115,8 +126,8 @@ mod tests {
         assert!(vuelta.contains("\"obsidianVaultPath\""), "salió: {vuelta}");
     }
 
-    /// Un `settings.json` escrito antes de existir estos campos debe seguir
-    /// cargando, no dejar la app sin ajustes.
+    /// Un `settings.json` de una versión anterior (con las dos carpetas que ya
+    /// no existen) debe seguir cargando, no dejar la app sin ajustes.
     #[test]
     fn un_archivo_antiguo_recibe_valores_por_defecto() {
         let json = r#"{
@@ -129,5 +140,9 @@ mod tests {
         let parsed: Settings = serde_json::from_str(json).expect("el formato antiguo debe cargar");
         assert_eq!(parsed.transcription_service, "local");
         assert_eq!(parsed.eleven_labs_api_key, "");
+        assert_eq!(parsed.obsidian_vault_path, None);
+        // El formato elegido entonces se respeta; solo los campos ausentes
+        // caen al valor por defecto.
+        assert_eq!(parsed.transcript_format, "Markdown");
     }
 }

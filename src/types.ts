@@ -69,9 +69,13 @@ export const TRANSCRIPT_FORMATS = ['TXT', 'Markdown', 'SRT', 'Obsidian'] as cons
 export type TranscriptFormat = (typeof TRANSCRIPT_FORMATS)[number];
 
 export interface Settings {
-  recordingFolder: string;
-  transcriptFolder: string;
+  /**
+   * Vault de Obsidian: la única carpeta que elige el usuario. Vinculado, el
+   * audio y las notas viven dentro; sin vincular, en Documentos.
+   */
   obsidianVaultPath: string | null;
+  /** Solo lectura: dónde acaba todo. Lo calcula el backend al cargar. */
+  storageRoot: string;
   defaultSourceId: string;
   transcriptFormat: TranscriptFormat;
   transcriptionService: 'local' | 'elevenlabs';

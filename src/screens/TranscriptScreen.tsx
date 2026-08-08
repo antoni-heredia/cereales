@@ -86,12 +86,15 @@ export function TranscriptScreen() {
     }
   };
 
+  const parsedTags = tagsInput
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+  const savedTags = recording.tags ?? [];
+  const tagsDirty = parsedTags.join(',') !== savedTags.join(',');
+
   const handleSaveTags = () => {
-    const tags = tagsInput
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0);
-    actions.updateRecordingTags(recording.id, tags);
+    if (tagsDirty) actions.updateRecordingTags(recording.id, parsedTags);
   };
 
   return (
@@ -149,31 +152,35 @@ export function TranscriptScreen() {
       <div className="rule" />
 
       <div className="tags-section">
-        <div className="tags-label">Tags para Obsidian</div>
-        <div className="tags-input-row">
+        <div className="setting-name">Etiquetas</div>
+        <div className="tags-row">
           <input
             type="text"
             className="tags-input"
-            placeholder="reunión, cliente, urgente..."
+            placeholder="reunión, cliente, urgente"
             value={tagsInput}
             onChange={(e) => setTagsInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleSaveTags();
+              if (e.key === 'Escape') setTagsInput(savedTags.join(', '));
             }}
           />
-          <button type="button" className="btn-solid btn-sm" onClick={handleSaveTags}>
-            Guardar tags
+          <button
+            type="button"
+            className="btn-solid btn-sm"
+            disabled={!tagsDirty}
+            onClick={handleSaveTags}
+          >
+            Guardar
           </button>
         </div>
-        {recording.tags && recording.tags.length > 0 && (
-          <div className="tags-display">
-            {recording.tags.map((tag) => (
-              <span key={tag} className="tag">
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
+        <div className="setting-hint">
+          {tagsDirty ? (
+            <span className="setting-dirty">Sin guardar · Enter para guardar</span>
+          ) : (
+            'Separadas por comas. Van al frontmatter de la nota de Obsidian.'
+          )}
+        </div>
       </div>
 
       {error && (

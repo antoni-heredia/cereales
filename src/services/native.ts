@@ -15,7 +15,7 @@ import type {
   Transcript,
   TranscriptEntry,
 } from '@/types';
-import { serializeTranscript, transcriptExtension } from '@/lib/serialize';
+import { serializeTranscript, transcriptRelPath } from '@/lib/serialize';
 import type { AudioService, StopResult, StorageService, TranscriptionService } from './types';
 
 /** Suscripción a un evento de Tauri con cancelación segura antes de resolverse. */
@@ -50,7 +50,7 @@ export const nativeTranscription: TranscriptionService = {
 
 export const nativeStorage: StorageService = {
   loadSettings: () => invoke<Settings>('load_settings'),
-  saveSettings: (settings) => invoke<void>('save_settings', { settings }),
+  saveSettings: (settings) => invoke<Settings>('save_settings', { settings }),
 
   listRecordings: () => invoke<Recording[]>('list_recordings'),
   saveRecording: (recording) => invoke<void>('save_recording', { recording }),
@@ -58,20 +58,20 @@ export const nativeStorage: StorageService = {
   loadTranscript: (recordingId) => invoke<Transcript | null>('load_transcript', { recordingId }),
 
   async writeTranscript(recording, transcript, format) {
-    // Serialization stays in TS so all three formats have one implementation;
-    // Rust only owns the bytes-to-disk step.
+    // Serialization stays in TS so all formats have one implementation, y el
+    // nombre de la nota va con ella; Rust solo owns the bytes-to-disk step.
     const contents = serializeTranscript(recording, transcript, format);
     return invoke<string>('write_transcript', {
       recordingId: recording.id,
       contents,
-      extension: transcriptExtension(format),
+      relPath: transcriptRelPath(recording, format),
       transcript,
     });
   },
 
   deleteRecording: (recordingId) => invoke<void>('delete_recording', { recordingId }),
-  renameRecording: (recordingId, newTitle) =>
-    invoke<void>('rename_recording', { recordingId, newTitle }),
+  renameRecording: (recordingId, newTitle, newRelPath) =>
+    invoke<void>('rename_recording', { recordingId, newTitle, newRelPath }),
   // `asset://` lo sirve el propio Tauri: soporta Range, así que la barra de
   // progreso del reproductor funciona sin cargar el WAV entero en memoria.
   audioUrl: (audioPath) => convertFileSrc(audioPath),
