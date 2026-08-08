@@ -1,6 +1,6 @@
 [package]
 name = "cereales"
-version = "0.2.0"
+version = "0.3.0"
 description = "Grabador de reuniones con transcripción y notas con marca de tiempo"
 edition = "2021"
 rust-version = "1.77.2"
