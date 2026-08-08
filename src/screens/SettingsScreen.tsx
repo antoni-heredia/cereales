@@ -76,6 +76,38 @@ export function SettingsScreen() {
       </section>
 
       <section className="settings-group">
+        <h2 className="settings-group-label">Integración Obsidian</h2>
+        <div className="setting-row">
+          <div>
+            <div className="setting-name">Vault de Obsidian</div>
+            <div className="setting-value">
+              {settings.obsidianVaultPath ?? 'No vinculado'}
+            </div>
+            <div className="setting-hint">
+              Las transcripciones se guardarán en transcripciones/YYYY/ dentro de tu vault.
+            </div>
+          </div>
+          {settings.obsidianVaultPath ? (
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => actions.updateSettings({ obsidianVaultPath: null })}
+            >
+              Desvinvular
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => actions.pickFolder('obsidianVaultPath')}
+            >
+              Vincular
+            </button>
+          )}
+        </div>
+      </section>
+
+      <section className="settings-group">
         <h2 className="settings-group-label">Audio</h2>
         <SourcePicker
           variant="row"

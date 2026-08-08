@@ -35,6 +35,8 @@ export function serializeTranscript(
       return serializeMarkdown(recording, transcript);
     case 'SRT':
       return serializeSrt(recording, transcript);
+    case 'Obsidian':
+      return serializeObsidian(recording, transcript);
   }
 }
 
@@ -87,10 +89,73 @@ function serializeSrt(recording: Recording, transcript: Transcript): string {
   );
 }
 
+function serializeObsidian(recording: Recording, transcript: Transcript): string {
+  const dateISO = recording.startedAt.split('T')[0];
+  const duration = formatTime(recording.durationSec);
+  const audioFile = `${dateISO}-${recording.title.toLowerCase().replace(/\s+/g, '-')}.wav`;
+
+  const lines: string[] = [
+    '---',
+    `date: ${dateISO}`,
+    `duration: "${duration}"`,
+    'source: "cereales"',
+    `audioFile: "transcripciones/audio/${audioFile}"`,
+    'tags:',
+  ];
+
+  if (recording.tags && recording.tags.length > 0) {
+    for (const tag of recording.tags) {
+      lines.push(`  - ${tag}`);
+    }
+  } else {
+    lines.push('  - reunión');
+  }
+
+  lines.push(
+    '---',
+    '',
+    `# ${recording.title}`,
+    '',
+    `**Duración:** ${duration}  `,
+    `**Grabado:** ${new Date(recording.startedAt).toLocaleString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' })}`,
+    '',
+    '## Transcripción',
+    '',
+  );
+
+  for (const entry of transcript.entries) {
+    const time = formatTime(entry.timeSec);
+    lines.push(`### [${time}]`);
+    lines.push(`> ${entry.text}`);
+
+    const notesForTime = transcript.notes.filter(
+      (note) => Math.abs(note.timeSec - entry.timeSec) < 1,
+    );
+    for (const note of notesForTime) {
+      lines.push(`> ⚠️ **Nota:** ${note.text}`);
+    }
+    lines.push('');
+  }
+
+  if (transcript.notes.length > 0) {
+    lines.push('## Notas', '');
+    for (const note of transcript.notes) {
+      lines.push(`- \`${formatTime(note.timeSec)}\` ${note.text}`);
+    }
+    lines.push('');
+  }
+
+  lines.push('## Archivos Adjuntos', '');
+  lines.push(`- Audio original: \`transcripciones/audio/${audioFile}\``);
+
+  return lines.join('\n');
+}
+
 const EXTENSIONS: Record<TranscriptFormat, string> = {
   TXT: 'txt',
   Markdown: 'md',
   SRT: 'srt',
+  Obsidian: 'md',
 };
 
 export function transcriptExtension(format: TranscriptFormat): string {

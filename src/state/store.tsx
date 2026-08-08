@@ -56,6 +56,7 @@ interface AppActions {
   transcribeRecording: (recordingId: string) => void;
   deleteRecording: (recordingId: string) => void;
   renameRecording: (recordingId: string, newTitle: string) => void;
+  updateRecordingTags: (recordingId: string, tags: string[]) => void;
   audioUrl: (audioPath: string) => string;
   setNoteDraft: (value: string) => void;
   commitNote: () => void;
@@ -64,7 +65,7 @@ interface AppActions {
   jumpToNote: (timeSec: number) => void;
   updateSettings: (patch: Partial<Settings>) => void;
   setTranscriptFormat: (format: TranscriptFormat) => void;
-  pickFolder: (which: 'recordingFolder' | 'transcriptFolder') => void;
+  pickFolder: (which: 'recordingFolder' | 'transcriptFolder' | 'obsidianVaultPath') => void;
   downloadModel: () => void;
   dismissError: () => void;
 }
@@ -302,12 +303,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   );
 
   const pickFolder = useCallback(
-    (which: 'recordingFolder' | 'transcriptFolder') => {
-      const title =
-        which === 'recordingFolder' ? 'Carpeta de grabaciones' : 'Carpeta de transcripciones';
+    (which: 'recordingFolder' | 'transcriptFolder' | 'obsidianVaultPath') => {
+      const titleMap = {
+        recordingFolder: 'Carpeta de grabaciones',
+        transcriptFolder: 'Carpeta de transcripciones',
+        obsidianVaultPath: 'Vault de Obsidian',
+      };
+      const title = titleMap[which];
       void (async () => {
         try {
-          const picked = await services.storage.pickFolder(title, settings[which]);
+          const current = settings[which];
+          const currentPath = (typeof current === 'string' ? current : '') || '';
+          const picked = await services.storage.pickFolder(title, currentPath);
           if (picked) persistSettings({ ...settings, [which]: picked });
         } catch (err) {
           setError(describeError(err));
@@ -383,6 +390,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
+  const updateRecordingTags = useCallback((recordingId: string, tags: string[]) => {
+    setError(null);
+    setRecordings((prev) =>
+      prev.map((r) => (r.id === recordingId ? { ...r, tags } : r)),
+    );
+    void (async () => {
+      try {
+        const updated = [...recordings].find((r) => r.id === recordingId);
+        if (updated) {
+          await services.storage.saveRecording({ ...updated, tags });
+        }
+      } catch (err) {
+        setError(describeError(err));
+      }
+    })();
+  }, [recordings]);
+
   const audioUrl = useCallback((audioPath: string) => services.storage.audioUrl(audioPath), []);
 
   const downloadModel = useCallback(() => {
@@ -416,6 +440,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       transcribeRecording,
       deleteRecording,
       renameRecording,
+      updateRecordingTags,
       audioUrl,
       setNoteDraft,
       commitNote,
@@ -441,6 +466,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       startRecording,
       stopRecording,
       transcribeRecording,
+      updateRecordingTags,
       updateSettings,
       viewLatestTranscript,
     ],

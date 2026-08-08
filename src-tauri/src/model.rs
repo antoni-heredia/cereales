@@ -24,6 +24,8 @@ pub struct Recording {
     pub audio_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -61,8 +63,10 @@ fn default_transcription_service() -> String {
 pub struct Settings {
     pub recording_folder: String,
     pub transcript_folder: String,
+    #[serde(default)]
+    pub obsidian_vault_path: Option<String>,
     pub default_source_id: String,
-    /// "TXT" | "Markdown" | "SRT"
+    /// "TXT" | "Markdown" | "SRT" | "Obsidian"
     pub transcript_format: String,
     /// "local" | "elevenlabs"
     #[serde(default = "default_transcription_service")]
@@ -93,8 +97,9 @@ mod tests {
         let json = r#"{
             "recordingFolder": "C:\\audio",
             "transcriptFolder": "C:\\texto",
+            "obsidianVaultPath": "G:\\Mi unidad\\obsidian\\Personal",
             "defaultSourceId": "sys:default",
-            "transcriptFormat": "Markdown",
+            "transcriptFormat": "Obsidian",
             "transcriptionService": "elevenlabs",
             "elevenLabsApiKey": "sk_secreto"
         }"#;
@@ -102,10 +107,12 @@ mod tests {
         let parsed: Settings = serde_json::from_str(json).expect("debería deserializar");
         assert_eq!(parsed.transcription_service, "elevenlabs");
         assert_eq!(parsed.eleven_labs_api_key, "sk_secreto");
+        assert_eq!(parsed.obsidian_vault_path, Some("G:\\Mi unidad\\obsidian\\Personal".to_string()));
 
         let vuelta = serde_json::to_string(&parsed).expect("debería serializar");
         assert!(vuelta.contains("\"transcriptionService\":\"elevenlabs\""), "salió: {vuelta}");
         assert!(vuelta.contains("\"elevenLabsApiKey\":\"sk_secreto\""), "salió: {vuelta}");
+        assert!(vuelta.contains("\"obsidianVaultPath\""), "salió: {vuelta}");
     }
 
     /// Un `settings.json` escrito antes de existir estos campos debe seguir

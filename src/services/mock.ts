@@ -11,8 +11,9 @@ import type { AudioService, StopResult, StorageService, TranscriptionService } f
 export const DEFAULT_SETTINGS: Settings = {
   recordingFolder: '~/Documents/cereales/grabaciones',
   transcriptFolder: '~/Documents/cereales/transcripciones',
+  obsidianVaultPath: null,
   defaultSourceId: 'sys:default',
-  transcriptFormat: 'Markdown',
+  transcriptFormat: 'Obsidian',
   transcriptionService: 'local',
   elevenLabsApiKey: '',
 };

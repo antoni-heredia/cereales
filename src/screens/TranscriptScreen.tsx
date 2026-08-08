@@ -18,6 +18,7 @@ export function TranscriptScreen() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [tagsInput, setTagsInput] = useState('');
 
   // Clicking a note scrolls the matching transcript entry into view.
   useEffect(() => {
@@ -28,6 +29,12 @@ export function TranscriptScreen() {
       container.scrollTo({ top: target.offsetTop - 12, behavior: 'smooth' });
     }
   }, [activeEntryIndex]);
+
+  // Sincronizar tags al cambiar de grabación
+  useEffect(() => {
+    const rec = recordings.find((r) => r.id === selectedRecordingId) ?? recordings[0];
+    setTagsInput((rec?.tags ?? []).join(', '));
+  }, [selectedRecordingId, recordings]);
 
   // Todo hook va antes de este return: si saliera antes, el número de hooks
   // cambiaría al llegar la primera grabación y React se rompería.
@@ -77,6 +84,14 @@ export function TranscriptScreen() {
       setIsRenaming(false);
       setNewTitle('');
     }
+  };
+
+  const handleSaveTags = () => {
+    const tags = tagsInput
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+    actions.updateRecordingTags(recording.id, tags);
   };
 
   return (
@@ -132,6 +147,34 @@ export function TranscriptScreen() {
         </div>
       </div>
       <div className="rule" />
+
+      <div className="tags-section">
+        <div className="tags-label">Tags para Obsidian</div>
+        <div className="tags-input-row">
+          <input
+            type="text"
+            className="tags-input"
+            placeholder="reunión, cliente, urgente..."
+            value={tagsInput}
+            onChange={(e) => setTagsInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSaveTags();
+            }}
+          />
+          <button type="button" className="btn-solid btn-sm" onClick={handleSaveTags}>
+            Guardar tags
+          </button>
+        </div>
+        {recording.tags && recording.tags.length > 0 && (
+          <div className="tags-display">
+            {recording.tags.map((tag) => (
+              <span key={tag} className="tag">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
 
       {error && (
         <div className="error-card" role="alert" onClick={actions.dismissError}>

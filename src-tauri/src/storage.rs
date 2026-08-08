@@ -33,6 +33,7 @@ fn default_settings(app: &AppHandle) -> Settings {
     Settings {
         recording_folder: base.join("grabaciones").to_string_lossy().into_owned(),
         transcript_folder: base.join("transcripciones").to_string_lossy().into_owned(),
+        obsidian_vault_path: None,
         default_source_id: String::new(),
         transcript_format: "Markdown".to_string(),
         transcription_service: "local".to_string(),
@@ -105,6 +106,7 @@ pub fn list_recordings(app: AppHandle) -> Result<Vec<Recording>, String> {
                 duration_sec: wav_duration_sec(&path),
                 audio_path: None,
                 transcript_path: None,
+                tags: None,
             });
         // La ruta buena es la del archivo que acabamos de encontrar; la
         // guardada se queda obsoleta si se mueve la carpeta.
@@ -168,12 +170,43 @@ pub fn write_transcript(
     let json = serde_json::to_string_pretty(&transcript).map_err(|e| e.to_string())?;
     fs::write(sidecar, json).map_err(|e| e.to_string())?;
 
-    let settings = load_settings(app)?;
-    let folder = PathBuf::from(&settings.transcript_folder);
+    let settings = load_settings(app.clone())?;
+
+    // Determinar la carpeta de salida según si Obsidian está vinculado
+    let (folder, copy_audio_to) = if let Some(vault_path) = &settings.obsidian_vault_path {
+        // Extraer año de la grabación (formato YYYY-MM-DD-...)
+        let year = &recording_id[..4];
+        let obsidian_folder = PathBuf::from(vault_path)
+            .join("transcripciones")
+            .join(year);
+        let audio_folder = PathBuf::from(vault_path).join("transcripciones").join("Audio");
+        (obsidian_folder, Some(audio_folder))
+    } else {
+        (
+            PathBuf::from(&settings.transcript_folder),
+            None,
+        )
+    };
+
     fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
 
     let out = folder.join(format!("{id}.{extension}"));
     fs::write(&out, contents).map_err(|e| e.to_string())?;
+
+    // Si Obsidian está vinculado, copiar el archivo de audio
+    if let Some(audio_folder) = copy_audio_to {
+        if let Ok(recordings) = list_recordings(app) {
+            if let Some(recording) = recordings.iter().find(|r| r.id == recording_id) {
+                if let Some(audio_path) = &recording.audio_path {
+                    fs::create_dir_all(&audio_folder).map_err(|e| e.to_string())?;
+                    let audio_file_name = format!("{}.wav", id);
+                    let dest = audio_folder.join(&audio_file_name);
+                    let _ = fs::copy(audio_path, dest);
+                }
+            }
+        }
+    }
+
     Ok(out.to_string_lossy().into_owned())
 }
 
@@ -211,6 +244,27 @@ pub fn delete_recording(app: AppHandle, recording_id: String) -> Result<(), Stri
         }
     }
 
+    // Si Obsidian está vinculado, borrar también los archivos allí
+    if let Some(vault_path) = settings.obsidian_vault_path {
+        let year = &recording_id[..4];
+        let obsidian_path = PathBuf::from(&vault_path)
+            .join("transcripciones")
+            .join(year)
+            .join(format!("{}.md", id));
+        if obsidian_path.exists() {
+            let _ = fs::remove_file(&obsidian_path);
+        }
+
+        // Borrar audio de Obsidian si existe
+        let audio_path = PathBuf::from(&vault_path)
+            .join("transcripciones")
+            .join("Audio")
+            .join(format!("{}.wav", id));
+        if audio_path.exists() {
+            let _ = fs::remove_file(&audio_path);
+        }
+    }
+
     Ok(())
 }
 
@@ -230,15 +284,44 @@ pub fn rename_recording(
         .find(|r| r.id == recording_id)
         .ok_or_else(|| "Grabación no encontrada".to_string())?;
 
+    let old_title = recording.title.clone();
     // Actualizar el título
-    recording.title = new_title;
+    recording.title = new_title.clone();
 
     // Guardar metadatos actualizados
     let settings = load_settings(app)?;
     let recording_dir = PathBuf::from(&settings.recording_folder);
     let metadata_path = recording_dir.join(format!("{}.json", id));
     let json = serde_json::to_string_pretty(&recording).map_err(|e| e.to_string())?;
-    fs::write(metadata_path, json).map_err(|e| e.to_string())
+    fs::write(metadata_path, json).map_err(|e| e.to_string())?;
+
+    // Si Obsidian está vinculado, renombrar el archivo de audio
+    if let Some(vault_path) = settings.obsidian_vault_path {
+        let audio_folder = PathBuf::from(&vault_path).join("transcripciones").join("Audio");
+
+        // Generar nombres antiguos y nuevos basados en la fecha y título
+        let date_part = &recording_id[..10]; // YYYY-MM-DD
+        let old_audio_name = format!(
+            "{}-{}.wav",
+            date_part,
+            old_title.to_lowercase().replace(' ', "-")
+        );
+        let new_audio_name = format!(
+            "{}-{}.wav",
+            date_part,
+            new_title.to_lowercase().replace(' ', "-")
+        );
+
+        let old_path = audio_folder.join(&old_audio_name);
+        let new_path = audio_folder.join(&new_audio_name);
+
+        // Renombrar si el archivo antiguo existe y el nuevo nombre es diferente
+        if old_path.exists() && old_audio_name != new_audio_name {
+            let _ = fs::rename(&old_path, &new_path);
+        }
+    }
+
+    Ok(())
 }
 
 /// Abre la carpeta de grabaciones al protocolo `asset://`, para que el
