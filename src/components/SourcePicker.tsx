@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { useI18n } from '@/i18n';
+import { groupLabel, sourceLabel } from '@/lib/sources';
 import { SOURCE_GROUPS, type AudioSource, type SourceGroup } from '@/types';
 
 interface SourcePickerProps {
@@ -28,6 +30,7 @@ export function SourcePicker({
   label,
   value,
 }: SourcePickerProps) {
+  const { lang, t } = useI18n();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -89,7 +92,7 @@ export function SourcePicker({
         <div className="source-menu" role="listbox">
           {groups.map(([group, items]) => (
             <div key={group}>
-              <div className="source-group">{group}</div>
+              <div className="source-group">{groupLabel(group, lang)}</div>
               {items.map((source) => (
                 <button
                   key={source.id}
@@ -104,12 +107,12 @@ export function SourcePicker({
                     setOpen(false);
                   }}
                 >
-                  {source.label}
+                  {sourceLabel(source, lang)}
                 </button>
               ))}
             </div>
           ))}
-          {groups.length === 0 && <div className="source-group">No hay fuentes disponibles</div>}
+          {groups.length === 0 && <div className="source-group">{t('source.empty')}</div>}
         </div>
       )}
     </div>

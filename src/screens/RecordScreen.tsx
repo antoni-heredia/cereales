@@ -1,5 +1,8 @@
+import { ScreenshotEditor } from '@/components/ScreenshotEditor';
+import { ScreenshotViewer } from '@/components/ScreenshotViewer';
 import { SourcePicker } from '@/components/SourcePicker';
 import { Waveform } from '@/components/Waveform';
+import { useI18n } from '@/i18n';
 import { formatTime, formatToday } from '@/lib/format';
 import { useApp } from '@/state/store';
 
@@ -14,9 +17,13 @@ export function RecordScreen() {
     notesOpen,
     noteDraft,
     liveNotes,
+    shotDraft,
+    shotView,
+    shotBusy,
     error,
     actions,
   } = useApp();
+  const { lang, t } = useI18n();
 
   const recording = phase === 'recording';
   const showIdleCard = phase === 'idle' || phase === 'recording';
@@ -24,8 +31,8 @@ export function RecordScreen() {
   return (
     <div className="screen screen--record">
       <div>
-        <h1 className="screen-title">Nueva grabación</h1>
-        <div className="screen-sub">{formatToday()}</div>
+        <h1 className="screen-title">{t('record.title')}</h1>
+        <div className="screen-sub">{formatToday(lang)}</div>
       </div>
       <div className="rule" />
 
@@ -39,7 +46,7 @@ export function RecordScreen() {
         <div className="rec-card">
           <div className="rec-head">
             <div className={`status-tag${recording ? ' status-tag--live' : ''}`}>
-              {recording ? 'Grabando' : 'Listo para grabar'}
+              {recording ? t('record.statusLive') : t('record.statusReady')}
             </div>
             <div className="elapsed">{formatTime(elapsedSec)}</div>
           </div>
@@ -49,7 +56,7 @@ export function RecordScreen() {
             selectedId={selectedSourceId}
             onSelect={actions.selectSource}
             disabled={recording}
-            label="Fuente"
+            label={t('record.source')}
             value={selectedSourceLabel}
           />
 
@@ -59,27 +66,27 @@ export function RecordScreen() {
             disabled={!recording && !selectedSourceId}
             onClick={recording ? actions.stopRecording : actions.startRecording}
           >
-            {recording ? 'Detener grabación' : 'Grabar'}
+            {recording ? t('record.stop') : t('record.start')}
           </button>
         </div>
       )}
 
       {phase === 'done' && (
         <div className="done-card">
-          <div className="done-title">Grabación guardada · {formatTime(lastDurationSec)}</div>
-          <div className="done-body">
-            El audio quedó guardado. Puedes transcribir desde la pantalla de detalles.
+          <div className="done-title">
+            {t('record.saved', { duration: formatTime(lastDurationSec) })}
           </div>
+          <div className="done-body">{t('record.savedBody')}</div>
           <div className="done-actions">
             <button type="button" className="btn-solid" onClick={actions.viewLatestTranscript}>
-              Ver grabación
+              {t('record.view')}
             </button>
             <button
               type="button"
               className="btn-outline btn-outline--lg"
               onClick={actions.resetRecorder}
             >
-              Nueva grabación
+              {t('record.again')}
             </button>
           </div>
         </div>
@@ -88,24 +95,32 @@ export function RecordScreen() {
       {recording && (
         <div className="wave-row">
           <Waveform active />
-          <button
-            type="button"
-            className={`notes-toggle${notesOpen ? ' notes-toggle--on' : ''}`}
-            onClick={actions.toggleNotes}
-          >
-            {notesOpen ? 'Ocultar notas' : 'Mostrar notas'}
-          </button>
+          <div className="wave-actions">
+            <button
+              type="button"
+              className="notes-toggle"
+              onClick={actions.captureScreenshot}
+              disabled={shotBusy}
+            >
+              {shotBusy ? t('record.shotBusy') : t('record.shot')}
+            </button>
+            <button
+              type="button"
+              className={`notes-toggle${notesOpen ? ' notes-toggle--on' : ''}`}
+              onClick={actions.toggleNotes}
+            >
+              {notesOpen ? t('record.hideNotes') : t('record.showNotes')}
+            </button>
+          </div>
         </div>
       )}
 
       {recording && notesOpen && (
         <div className="live-notes">
-          <div className="live-notes-label">
-            Notas en vivo · Enter para guardar con marca de tiempo
-          </div>
+          <div className="live-notes-label">{t('record.notesLabel')}</div>
           <textarea
             className="note-input"
-            placeholder="Escribe una nota…"
+            placeholder={t('record.notePlaceholder')}
             value={noteDraft}
             onChange={(event) => actions.setNoteDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -119,11 +134,48 @@ export function RecordScreen() {
             {liveNotes.map((note) => (
               <div key={note.id} className="note-row">
                 <div className="note-time">{formatTime(note.timeSec)}</div>
-                <div>{note.text}</div>
+                <div className="note-row-body">
+                  <div>{note.text}</div>
+                  {note.image && (
+                    <button
+                      type="button"
+                      className="shot-thumb-button"
+                      title={t('shot.view')}
+                      onClick={() => actions.openShot(note)}
+                    >
+                      <img
+                        className="shot-thumb"
+                        src={actions.attachmentUrl(note.image)}
+                        alt={t('transcript.shotAlt', { time: formatTime(note.timeSec) })}
+                      />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         </div>
+      )}
+
+      {shotView && (
+        <ScreenshotViewer
+          src={actions.attachmentUrl(shotView.fileName)}
+          timeSec={shotView.timeSec}
+          caption={shotView.caption}
+          onEdit={() => actions.editShot(shotView.fileName, shotView.timeSec)}
+          onClose={actions.closeShot}
+        />
+      )}
+
+      {shotDraft && (
+        <ScreenshotEditor
+          source={shotDraft.source}
+          timeSec={shotDraft.timeSec}
+          editing={Boolean(shotDraft.fileName)}
+          onSave={actions.commitScreenshot}
+          onCancel={actions.cancelScreenshot}
+          busy={shotBusy}
+        />
       )}
     </div>
   );

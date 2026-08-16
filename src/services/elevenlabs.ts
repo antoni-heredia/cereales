@@ -1,19 +1,32 @@
 /**
- * Transcripción con la API Scribe de ElevenLabs.
+ * Transcription through the ElevenLabs Scribe API.
  *
- * Alternativa al modelo local: el audio sale de la máquina, pero a cambio no
- * hay que bajarse medio giga de modelo ni pagar el rato de CPU. Y, a diferencia
- * de whisper.cpp, sí diariza, así que las líneas pueden salir con hablante.
+ * The alternative to the local model: the audio leaves the machine, but in
+ * exchange there is no half-gigabyte model to download and no CPU time to pay.
+ * And unlike whisper.cpp it does diarize, so lines can carry a speaker.
  */
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { translate, type Language } from '@/i18n';
 import type { ModelStatus, NativeProgress, TranscriptEntry } from '@/types';
-import type { TranscriptionService } from './types';
+import type { TranscribeLanguages, TranscriptionService } from './types';
 
 const ENDPOINT = 'https://api.elevenlabs.io/v1/speech-to-text';
-/** Modelo de Scribe. `model_id` es obligatorio: sin él la API responde 422. */
+/** Scribe model. `model_id` is mandatory: without it the API answers 422. */
 const MODEL_ID = 'scribe_v1';
 
-/** Palabra suelta tal y como la devuelve Scribe; `start`/`end` van en segundos. */
+/** ISO 639-3 codes, which is what Scribe's `language_code` expects. */
+const LANGUAGE_CODES: Record<Language, string> = { en: 'eng', es: 'spa' };
+
+/** The remote engine dressed as a `ModelStatus`: a key is all it takes to be ready. */
+const scribe = (apiKey: string): ModelStatus => ({
+  id: MODEL_ID,
+  installed: !!apiKey,
+  name: 'ElevenLabs Scribe',
+  bytes: 0,
+  approxBytes: 0,
+});
+
+/** A single word as Scribe returns it; `start`/`end` are in seconds. */
 interface ScribeWord {
   text: string;
   start?: number;
@@ -28,34 +41,36 @@ export interface ScribeResponse {
   words?: ScribeWord[];
 }
 
-/** Corta un segmento al cerrar frase, para no pintar una entrada por palabra. */
-const FIN_DE_FRASE = /[.!?…]["')\]]?$/;
-/** Techos de seguridad por si el audio no trae puntuación. */
-const MAX_SEGMENTO_SEG = 15;
-const MAX_SEGMENTO_CHARS = 220;
+/** Closes a segment at the end of a sentence, so entries are not per word. */
+const SENTENCE_END = /[.!?…]["')\]]?$/;
+/** Safety ceilings, in case the audio comes back without punctuation. */
+const MAX_SEGMENT_SEC = 15;
+const MAX_SEGMENT_CHARS = 220;
 
 export const elevenLabsTranscription = (apiKey: string): TranscriptionService => {
   let onProgressCb: ((progress: NativeProgress) => void) | null = null;
   const emit = (percent: number, stage: string) => onProgressCb?.({ percent, stage });
 
   return {
-    async transcribe(audioPath: string): Promise<TranscriptEntry[]> {
+    async transcribe(audioPath: string, lang: TranscribeLanguages): Promise<TranscriptEntry[]> {
       if (!apiKey) {
-        throw new Error('Falta la API key de ElevenLabs. Añádela en Ajustes.');
+        throw new Error('err.elevenlabs.noKey');
       }
 
-      emit(0, 'transcribiendo');
-      const audio = await readAudioFile(audioPath);
+      emit(0, 'transcribing');
+      const audio = await readAudioFile(audioPath, lang.ui);
 
       const form = new FormData();
-      // El nombre de archivo importa: la API lo usa para deducir el contenedor.
-      form.append('file', new Blob([audio], { type: 'audio/wav' }), 'grabacion.wav');
+      // The filename matters: the API uses it to infer the container.
+      form.append('file', new Blob([audio], { type: 'audio/wav' }), 'recording.wav');
       form.append('model_id', MODEL_ID);
-      form.append('language_code', 'spa');
+      // Omitted entirely on `auto`: Scribe detects the language when the field
+      // is absent, and there is no code that means "detect it".
+      if (lang.audio !== 'auto') form.append('language_code', LANGUAGE_CODES[lang.audio]);
       form.append('diarize', 'true');
       form.append('timestamps_granularity', 'word');
 
-      emit(30, 'transcribiendo');
+      emit(30, 'transcribing');
       const response = await fetch(ENDPOINT, {
         method: 'POST',
         headers: { 'xi-api-key': apiKey },
@@ -63,26 +78,43 @@ export const elevenLabsTranscription = (apiKey: string): TranscriptionService =>
       });
 
       if (!response.ok) {
-        // El cuerpo del error de ElevenLabs dice qué campo sobra o falta; se
-        // propaga tal cual porque adivinarlo desde el código de estado no sirve.
-        const detalle = await response.text().catch(() => '');
-        throw new Error(`ElevenLabs respondió ${response.status}: ${detalle || 'sin detalle'}`);
+        // The ElevenLabs error body says which field is missing or extra, so it
+        // is passed through: guessing from the status code is no help.
+        const detail = await response.text().catch(() => '');
+        throw new Error(
+          translate(lang.ui, 'err.elevenlabs.http', {
+            status: response.status,
+            detail: detail || '—',
+          }),
+        );
       }
 
-      emit(80, 'transcribiendo');
+      emit(80, 'transcribing');
       const result = (await response.json()) as ScribeResponse;
-      emit(100, 'transcribiendo');
+      emit(100, 'transcribing');
 
-      return agruparEnSegmentos(result);
+      // The interface language, not the audio one: "Speaker 1" is a label the
+      // reader sees, not something that was spoken.
+      return groupIntoSegments(result, lang.ui);
     },
 
-    // No hay nada que instalar: el "modelo" está listo en cuanto hay clave.
+    // Nothing to install: the "model" is ready as soon as there is a key.
     async modelStatus(): Promise<ModelStatus> {
-      return { installed: !!apiKey, name: 'ElevenLabs Scribe', bytes: 0 };
+      return scribe(apiKey);
     },
 
     async downloadModel(): Promise<ModelStatus> {
-      return { installed: !!apiKey, name: 'ElevenLabs Scribe', bytes: 0 };
+      return scribe(apiKey);
+    },
+
+    // No local catalogue to manage: the settings screen hides the model section
+    // entirely while this engine is selected.
+    async listModels(): Promise<ModelStatus[]> {
+      return [];
+    },
+
+    async deleteModel(): Promise<ModelStatus[]> {
+      return [];
     },
 
     onProgress(cb) {
@@ -95,81 +127,83 @@ export const elevenLabsTranscription = (apiKey: string): TranscriptionService =>
 };
 
 /**
- * Scribe devuelve palabra a palabra. Una entrada por palabra dejaría la
- * transcripción ilegible y rompería el salto desde una nota, que busca la
- * entrada más cercana en el tiempo: se agrupan en frases.
+ * Scribe returns one word at a time. An entry per word would make the
+ * transcript unreadable and would break the jump from a note, which looks for
+ * the nearest entry in time: words are grouped into sentences.
  */
-export function agruparEnSegmentos(result: ScribeResponse): TranscriptEntry[] {
+export function groupIntoSegments(result: ScribeResponse, lang: Language): TranscriptEntry[] {
   const words = result.words ?? [];
   if (words.length === 0) {
     const text = result.text?.trim();
     return text ? [{ timeSec: 0, speaker: '', text }] : [];
   }
 
-  // Con un solo hablante el nombre no aporta nada, y la interfaz ya oculta la
-  // línea cuando va vacío.
-  const hablantes = new Set(
+  // With a single speaker the name adds nothing, and the UI already hides the
+  // line when it is empty.
+  const speakers = new Set(
     words.filter((w) => w.type !== 'spacing').map((w) => w.speaker_id).filter(Boolean),
   );
-  const diariza = hablantes.size > 1;
+  const diarizes = speakers.size > 1;
 
   const entries: TranscriptEntry[] = [];
-  // Un segmento abierto se representa con un objeto, no con "el buffer no está
-  // vacío": el espaciado ensucia el buffer y haría creer que sigue abierto.
-  let abierto: { inicio: number; hablante?: string; partes: string[] } | null = null;
+  // An open segment is an object rather than "the buffer is not empty":
+  // spacing dirties the buffer and would make it look like one is still open.
+  let open: { start: number; speaker?: string; parts: string[] } | null = null;
 
-  const cerrar = () => {
-    if (!abierto) return;
-    const text = abierto.partes.join('').trim();
+  const close = () => {
+    if (!open) return;
+    const text = open.parts.join('').trim();
     if (text) {
       entries.push({
-        timeSec: abierto.inicio,
-        speaker: diariza ? etiqueta(abierto.hablante) : '',
+        timeSec: open.start,
+        speaker: diarizes ? speakerLabel(open.speaker, lang) : '',
         text,
       });
     }
-    abierto = null;
+    open = null;
   };
 
   for (const word of words) {
-    // El espaciado solo separa palabras: nunca abre segmento ni decide hablante.
+    // Spacing only separates words: it never opens a segment or picks a speaker.
     if (word.type === 'spacing') {
-      abierto?.partes.push(word.text ?? ' ');
+      open?.parts.push(word.text ?? ' ');
       continue;
     }
 
-    if (abierto && word.speaker_id !== abierto.hablante) cerrar();
-    if (!abierto) {
-      abierto = { inicio: word.start ?? 0, hablante: word.speaker_id, partes: [] };
+    if (open && word.speaker_id !== open.speaker) close();
+    if (!open) {
+      open = { start: word.start ?? 0, speaker: word.speaker_id, parts: [] };
     }
-    abierto.partes.push(word.text ?? '');
+    open.parts.push(word.text ?? '');
 
-    const texto = abierto.partes.join('');
-    const fin = word.end ?? word.start ?? abierto.inicio;
-    const largo = texto.length >= MAX_SEGMENTO_CHARS;
-    const duracion = fin - abierto.inicio >= MAX_SEGMENTO_SEG;
-    if (FIN_DE_FRASE.test(texto.trimEnd()) || largo || duracion) cerrar();
+    const text = open.parts.join('');
+    const end = word.end ?? word.start ?? open.start;
+    const tooLong = text.length >= MAX_SEGMENT_CHARS;
+    const tooSlow = end - open.start >= MAX_SEGMENT_SEC;
+    if (SENTENCE_END.test(text.trimEnd()) || tooLong || tooSlow) close();
   }
-  cerrar();
+  close();
 
   return entries;
 }
 
-/** "speaker_0" -> "Hablante 1". */
-function etiqueta(speakerId: string | undefined): string {
+/** "speaker_0" -> "Speaker 1". */
+function speakerLabel(speakerId: string | undefined, lang: Language): string {
   if (!speakerId) return '';
   const n = Number(speakerId.match(/\d+/)?.[0]);
-  return Number.isFinite(n) ? `Hablante ${n + 1}` : speakerId;
+  return Number.isFinite(n) ? translate(lang, 'transcript.speaker', { n: n + 1 }) : speakerId;
 }
 
 /**
- * Lee el WAV grabado. Va por el protocolo `asset://` de Tauri en lugar de
- * `file://`, que el webview bloquea como recurso local.
+ * Reads the recorded WAV. It goes through Tauri's `asset://` protocol instead
+ * of `file://`, which the webview blocks as a local resource.
  */
-async function readAudioFile(audioPath: string): Promise<ArrayBuffer> {
+async function readAudioFile(audioPath: string, lang: Language): Promise<ArrayBuffer> {
   const response = await fetch(convertFileSrc(audioPath));
   if (!response.ok) {
-    throw new Error(`No se pudo leer el audio (${response.status}): ${audioPath}`);
+    throw new Error(
+      translate(lang, 'err.elevenlabs.readAudio', { status: response.status, path: audioPath }),
+    );
   }
   return response.arrayBuffer();
 }

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Sube la versión del proyecto en todos los ficheros que la declaran.
+// Bumps the project version in every file that declares it.
 //
 //   node .github/scripts/bump-version.mjs <major|minor|patch>
 //
-// Imprime la nueva versión por stdout.
+// Prints the new version to stdout.
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -13,7 +13,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const level = (process.argv[2] || 'patch').toLowerCase();
 
 if (!['major', 'minor', 'patch'].includes(level)) {
-  console.error(`Nivel no válido: ${level} (usa major, minor o patch)`);
+  console.error(`Invalid level: ${level} (use major, minor or patch)`);
   process.exit(1);
 }
 
@@ -22,7 +22,7 @@ const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
 
 const match = /^(\d+)\.(\d+)\.(\d+)/.exec(pkg.version ?? '');
 if (!match) {
-  console.error(`Versión no semver en package.json: ${pkg.version}`);
+  console.error(`Non-semver version in package.json: ${pkg.version}`);
   process.exit(1);
 }
 
@@ -34,7 +34,7 @@ else patch += 1;
 const next = `${major}.${minor}.${patch}`;
 const crateName = 'cereales';
 
-/** Reescribe un fichero solo si existe. */
+/** Rewrites a file only if it exists. */
 function edit(relPath, fn) {
   const abs = resolve(root, relPath);
   if (!existsSync(abs)) return;
@@ -44,8 +44,8 @@ function edit(relPath, fn) {
 }
 
 /**
- * Reemplaza las `count` primeras claves `"version"` de un JSON sin
- * reserializarlo, para no alterar el formato del resto del fichero.
+ * Replaces the first `count` `"version"` keys of a JSON file without
+ * re-serializing it, so the formatting of the rest of the file is untouched.
  */
 function replaceJsonVersion(raw, count) {
   let hits = 0;
@@ -54,16 +54,16 @@ function replaceJsonVersion(raw, count) {
   );
 }
 
-// package.json — la clave de nivel raíz es la primera del fichero.
+// package.json — the root key is the first one in the file.
 edit('package.json', (raw) => replaceJsonVersion(raw, 1));
 
-// package-lock.json — la versión aparece en la raíz y en el paquete "".
+// package-lock.json — the version appears at the root and in the "" package.
 edit('package-lock.json', (raw) => replaceJsonVersion(raw, 2));
 
 // tauri.conf.json
 edit('src-tauri/tauri.conf.json', (raw) => replaceJsonVersion(raw, 1));
 
-// Cargo.toml — solo el `version` de la sección [package].
+// Cargo.toml — only the `version` in the [package] section.
 edit('src-tauri/Cargo.toml', (raw) => {
   let section = '';
   let done = false;
@@ -81,7 +81,7 @@ edit('src-tauri/Cargo.toml', (raw) => {
     .join('\n');
 });
 
-// Cargo.lock — el bloque [[package]] del propio crate.
+// Cargo.lock — the [[package]] block of the crate itself.
 edit('src-tauri/Cargo.lock', (raw) => {
   const blocks = raw.split(/(?=\[\[package\]\])/);
   return blocks

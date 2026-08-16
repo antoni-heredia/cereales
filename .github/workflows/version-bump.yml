@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       level:
-        description: "Nivel de incremento (auto = deducir de los commits)"
+        description: "Bump level (auto = infer from the commits)"
         type: choice
         required: true
         default: auto
@@ -22,8 +22,8 @@ permissions:
 jobs:
   bump:
     runs-on: ubuntu-latest
-    # El propio bot no vuelve a dispararse: el commit lleva [skip ci], pero
-    # dejamos también esta guarda por si alguien reescribe el mensaje.
+    # The bot does not retrigger itself: the commit carries [skip ci], but this
+    # guard stays as well in case someone rewrites the message.
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
 
     outputs:
@@ -39,7 +39,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Calcular nivel de incremento
+      - name: Work out the bump level
         id: level
         run: |
           set -euo pipefail
@@ -47,12 +47,12 @@ jobs:
           MANUAL="${{ github.event.inputs.level || 'auto' }}"
           if [ "$MANUAL" != "auto" ]; then
             echo "level=$MANUAL" >> "$GITHUB_OUTPUT"
-            echo "Nivel forzado manualmente: $MANUAL"
+            echo "Level forced manually: $MANUAL"
             exit 0
           fi
 
-          # Rango de commits a analizar: desde el último tag, o desde el estado
-          # anterior del push si aún no hay ninguno.
+          # Range of commits to analyse: since the last tag, or since the state
+          # before the push if there is no tag yet.
           LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
           if [ -n "$LAST_TAG" ]; then
             RANGE="$LAST_TAG..HEAD"
@@ -61,11 +61,11 @@ jobs:
           else
             RANGE="HEAD"
           fi
-          echo "Analizando commits en: $RANGE"
+          echo "Analysing commits in: $RANGE"
 
           LOG="$(git log --no-merges --format=%B "$RANGE")"
           if [ -z "$(echo "$LOG" | tr -d '[:space:]')" ]; then
-            echo "Sin commits nuevos; no se incrementa versión."
+            echo "No new commits; not bumping the version."
             echo "level=none" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -73,7 +73,7 @@ jobs:
           # Conventional Commits:
           #   feat!: / fix(scope)!: / BREAKING CHANGE  -> major
           #   feat: / feat(scope):                     -> minor
-          #   resto                                    -> patch
+          #   anything else                            -> patch
           if echo "$LOG" | grep -qE '^[a-zA-Z]+(\([^)]*\))?!:' || echo "$LOG" | grep -qE '^BREAKING[ -]CHANGE'; then
             LEVEL=major
           elif echo "$LOG" | grep -qE '^feat(\([^)]*\))?:'; then
@@ -82,20 +82,20 @@ jobs:
             LEVEL=patch
           fi
 
-          echo "Nivel detectado: $LEVEL"
+          echo "Detected level: $LEVEL"
           echo "level=$LEVEL" >> "$GITHUB_OUTPUT"
 
-      - name: Incrementar versión
+      - name: Bump the version
         id: bump
         if: steps.level.outputs.level != 'none'
         run: |
           set -euo pipefail
           VERSION="$(node .github/scripts/bump-version.mjs '${{ steps.level.outputs.level }}')"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Nueva versión: $VERSION"
+          echo "New version: $VERSION"
           git diff --stat
 
-      - name: Commit y tag
+      - name: Commit and tag
         id: commit
         if: steps.level.outputs.level != 'none'
         env:
@@ -106,7 +106,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           if git diff --quiet; then
-            echo "Los ficheros de versión ya estaban actualizados; nada que commitear."
+            echo "The version files were already up to date; nothing to commit."
             echo "tagged=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -118,20 +118,20 @@ jobs:
           git push origin "v$VERSION"
           echo "tagged=true" >> "$GITHUB_OUTPUT"
 
-      # Nace en borrador: lo publica el job de binarios una vez subidos. Si la
-      # compilación falla, nadie se encuentra una release visible y sin nada que
-      # descargar.
-      - name: Crear release en borrador
+      # Born as a draft: the binaries job publishes it once the artifacts are
+      # uploaded. If the build fails, nobody finds a visible release with
+      # nothing to download.
+      - name: Create a draft release
         if: steps.commit.outputs.tagged == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.bump.outputs.version }}
         run: gh release create "v$VERSION" --title "v$VERSION" --generate-notes --draft
 
-  # Compila en Windows y cuelga los instaladores del release. Va aquí y no en un
-  # `on: push: tags` porque el tag lo empuja GITHUB_TOKEN, y esos tags no
-  # disparan workflows.
-  binarios:
+  # Builds on Windows and attaches the installers to the release. It lives here
+  # rather than in an `on: push: tags` workflow because the tag is pushed with
+  # GITHUB_TOKEN, and those tags do not trigger workflows.
+  binaries:
     needs: bump
     if: needs.bump.outputs.tagged == 'true'
     uses: ./.github/workflows/release-build.yml

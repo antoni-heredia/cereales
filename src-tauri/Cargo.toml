@@ -1,7 +1,7 @@
 [package]
 name = "cereales"
 version = "0.3.0"
-description = "Grabador de reuniones con transcripción y notas con marca de tiempo"
+description = "Meeting recorder with transcription and timestamped notes"
 edition = "2021"
 rust-version = "1.77.2"
 
@@ -22,8 +22,8 @@ ureq = "2"
 whisper-rs = "0.16"
 
 [target.'cfg(windows)'.dependencies]
-# `windows-core` va explícito porque el macro #[implement] genera código que
-# referencia `windows_core` desde la raíz del crate.
+# `windows-core` is listed explicitly because the #[implement] macro generates
+# code that references `windows_core` from the crate root.
 windows-core = "0.58"
 windows = { version = "0.58", features = [
   "implement",
@@ -37,6 +37,12 @@ windows = { version = "0.58", features = [
   "Win32_Security",
   "Win32_Devices_FunctionDiscovery",
   "Win32_UI_Shell_PropertiesSystem",
+  # Screen capture: GDI takes the pixels, WIC encodes them as PNG, and the HiDpi
+  # call is what keeps a scaled display from being captured at logical size.
+  "Win32_Graphics_Gdi",
+  "Win32_Graphics_Imaging",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_HiDpi",
 ] }
 
 [profile.release]

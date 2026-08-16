@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.3.0",
   "type": "module",
-  "description": "Grabador de reuniones con transcripción y notas con marca de tiempo",
+  "description": "Meeting recorder with transcription and timestamped notes",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

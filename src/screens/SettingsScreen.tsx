@@ -1,26 +1,43 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { ModelPicker } from '@/components/ModelPicker';
 import { SourcePicker } from '@/components/SourcePicker';
+import { AUDIO_LANGUAGES, LANGUAGES, useI18n, type AudioLanguageSetting } from '@/i18n';
+import { formatBytes } from '@/lib/format';
+import { sourceLabel } from '@/lib/sources';
 import { useApp } from '@/state/store';
 import { TRANSCRIPT_FORMATS } from '@/types';
 
-function formatBytes(bytes: number): string {
-  if (bytes <= 0) return '—';
-  const mb = bytes / (1024 * 1024);
-  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+/**
+ * Renders a message whose `{placeholders}` become `<code>` elements. The
+ * message is looked up without params on purpose, so the placeholders survive
+ * to here and the catalogue keeps one whole sentence per language instead of
+ * three fragments to reassemble.
+ */
+function withCode(template: string, values: Record<string, string>): ReactNode {
+  return template.split(/(\{\w+\})/).map((part, index) => {
+    const name = /^\{(\w+)\}$/.exec(part)?.[1];
+    return name && name in values ? (
+      <code key={index}>{values[name]}</code>
+    ) : (
+      <Fragment key={index}>{part}</Fragment>
+    );
+  });
 }
 
 export function SettingsScreen() {
-  const { settings, sources, model, modelBusy, progress, actions } = useApp();
-  const defaultSourceLabel =
-    sources.find((s) => s.id === settings.defaultSourceId)?.label ?? 'Sin fuente';
+  const { settings, sources, model, models, modelBusy, progress, error, actions } = useApp();
+  const { lang, t } = useI18n();
 
-  // La clave se edita en borrador y solo se guarda al pulsar. Escribir letra a
-  // letra contra los ajustes reescribiría el archivo y reconstruiría los
-  // servicios en cada tecla, y además no habría forma de saber si quedó guardada.
+  const defaultSource = sources.find((s) => s.id === settings.defaultSourceId);
+  const defaultSourceLabel = defaultSource ? sourceLabel(defaultSource, lang) : t('source.none');
+
+  // The key is edited as a draft and only saved on commit. Writing it letter by
+  // letter into the settings would rewrite the file and rebuild the services on
+  // every keystroke, and there would be no way to tell whether it got saved.
   const [apiKeyDraft, setApiKeyDraft] = useState(settings.elevenLabsApiKey);
 
-  // Los ajustes llegan de disco después del primer render: sin esto el borrador
-  // se quedaría con el valor vacío inicial.
+  // Settings arrive from disk after the first render: without this the draft
+  // would keep the initial empty value.
   useEffect(() => setApiKeyDraft(settings.elevenLabsApiKey), [settings.elevenLabsApiKey]);
 
   const apiKeyDirty = apiKeyDraft !== settings.elevenLabsApiKey;
@@ -29,57 +46,101 @@ export function SettingsScreen() {
     if (apiKeyDirty) actions.updateSettings({ elevenLabsApiKey: apiKeyDraft.trim() });
   };
 
-  const downloading = modelBusy && progress?.stage === 'descargando';
+  // Language names stay in their own language, like the interface selector;
+  // only the two options that are not a language get translated.
+  const audioLanguageLabel = (code: AudioLanguageSetting): string => {
+    if (code === '') return t('settings.audioLangInterface');
+    if (code === 'auto') return t('settings.audioLangAuto');
+    return LANGUAGES.find((l) => l.code === code)?.label ?? code;
+  };
+
+  // Deleting a model is one click away from freeing a gigabyte, so the button
+  // asks first. Picking another model drops the pending confirmation.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  useEffect(() => setConfirmingDelete(false), [settings.whisperModel]);
+
+  const downloading = modelBusy && progress?.stage === 'downloading';
   const modelValue = modelBusy
     ? downloading && progress.percent >= 0
-      ? `Descargando… ${progress.percent}%`
-      : 'Descargando…'
+      ? t('settings.modelDownloadingPercent', { percent: progress.percent })
+      : t('settings.modelDownloading')
     : model?.installed
       ? `${model.name} · ${formatBytes(model.bytes)}`
-      : 'No descargado';
+      : t('settings.modelMissing');
 
   return (
     <div className="screen screen--settings">
-      <h1 className="screen-title">Ajustes</h1>
+      <h1 className="screen-title">{t('settings.title')}</h1>
       <div className="rule" />
 
+      {/* Downloading and deleting a model both fail from this screen, so it
+          needs the same error card the other two have. */}
+      {error && (
+        <div className="error-card" role="alert" onClick={actions.dismissError}>
+          {error}
+        </div>
+      )}
+
       <section className="settings-group">
-        <h2 className="settings-group-label">Almacenamiento</h2>
+        <h2 className="settings-group-label">{t('settings.languageGroup')}</h2>
+        <div className="segmented">
+          {LANGUAGES.map((option) => (
+            <button
+              key={option.code}
+              type="button"
+              className={`segmented-option${
+                lang === option.code ? ' segmented-option--active' : ''
+              }`}
+              aria-pressed={lang === option.code}
+              onClick={() => actions.updateSettings({ language: option.code })}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <div className="setting-hint">{t('settings.languageHint')}</div>
+      </section>
+
+      <section className="settings-group">
+        <h2 className="settings-group-label">{t('settings.storageGroup')}</h2>
         <div className="setting-row">
           <div>
-            <div className="setting-name">Vault de Obsidian</div>
-            <div className="setting-value">{settings.obsidianVaultPath ?? 'Sin vincular'}</div>
+            <div className="setting-name">{t('settings.vault')}</div>
+            <div className="setting-value">
+              {settings.obsidianVaultPath ?? t('settings.vaultUnlinked')}
+            </div>
           </div>
           <button
             type="button"
             className="btn-outline"
             onClick={settings.obsidianVaultPath ? actions.unlinkVault : actions.pickVault}
           >
-            {settings.obsidianVaultPath ? 'Desvincular' : 'Vincular'}
+            {settings.obsidianVaultPath ? t('settings.vaultUnlink') : t('settings.vaultLink')}
           </button>
         </div>
         <div className="setting-hint">
-          Todo se guarda en <code>{settings.storageRoot}</code>: el audio en{' '}
-          <code>audio/</code> y las notas en una carpeta por año.
-          {!settings.obsidianVaultPath &&
-            ' Vincula tu vault para que Obsidian las vea directamente.'}
+          {withCode(t('settings.storageHint'), {
+            root: settings.storageRoot,
+            audio: 'audio/',
+          })}
+          {!settings.obsidianVaultPath && t('settings.storageHintLink')}
         </div>
       </section>
 
       <section className="settings-group">
-        <h2 className="settings-group-label">Audio</h2>
+        <h2 className="settings-group-label">{t('settings.audioGroup')}</h2>
         <SourcePicker
           variant="row"
           sources={sources}
           selectedId={settings.defaultSourceId}
           onSelect={(sourceId) => actions.updateSettings({ defaultSourceId: sourceId })}
-          label="Fuente de audio predeterminada"
+          label={t('settings.defaultSource')}
           value={defaultSourceLabel}
         />
       </section>
 
       <section className="settings-group">
-        <h2 className="settings-group-label">Servicio de transcripción</h2>
+        <h2 className="settings-group-label">{t('settings.serviceGroup')}</h2>
         <div className="segmented">
           <button
             type="button"
@@ -89,7 +150,7 @@ export function SettingsScreen() {
             aria-pressed={settings.transcriptionService === 'local'}
             onClick={() => actions.updateSettings({ transcriptionService: 'local' })}
           >
-            Local
+            {t('settings.serviceLocal')}
           </button>
           <button
             type="button"
@@ -104,27 +165,67 @@ export function SettingsScreen() {
         </div>
         <div className="setting-hint">
           {settings.transcriptionService === 'local'
-            ? 'La transcripción se hace en tu equipo: el audio no sale de la máquina.'
-            : 'Usa la API de ElevenLabs para transcribir. Requiere una API key válida.'}
+            ? t('settings.serviceLocalHint')
+            : t('settings.serviceElevenLabsHint')}
         </div>
+      </section>
+
+      <section className="settings-group">
+        <h2 className="settings-group-label">{t('settings.audioLangGroup')}</h2>
+        <div className="segmented">
+          {AUDIO_LANGUAGES.map((code) => (
+            <button
+              key={code || 'interface'}
+              type="button"
+              className={`segmented-option${
+                settings.audioLanguage === code ? ' segmented-option--active' : ''
+              }`}
+              aria-pressed={settings.audioLanguage === code}
+              onClick={() => actions.updateSettings({ audioLanguage: code })}
+            >
+              {audioLanguageLabel(code)}
+            </button>
+          ))}
+        </div>
+        <div className="setting-hint">{t('settings.audioLangHint')}</div>
       </section>
 
       {settings.transcriptionService === 'local' && (
         <section className="settings-group">
-          <h2 className="settings-group-label">Modelo local (whisper.cpp)</h2>
+          <h2 className="settings-group-label">{t('settings.modelGroup')}</h2>
+          <ModelPicker
+            models={models}
+            selectedId={settings.whisperModel}
+            onSelect={(whisperModel) => actions.updateSettings({ whisperModel })}
+            disabled={modelBusy}
+            label={t('settings.modelSelect')}
+          />
           <div className="setting-row">
             <div>
-              <div className="setting-name">Estado del modelo</div>
+              <div className="setting-name">{t('settings.modelStatus')}</div>
               <div className="setting-value">{modelValue}</div>
             </div>
-            {!model?.installed && (
+            {model?.installed ? (
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={modelBusy}
+                onClick={() => {
+                  if (!confirmingDelete) return setConfirmingDelete(true);
+                  setConfirmingDelete(false);
+                  actions.deleteModel(model.id);
+                }}
+              >
+                {confirmingDelete ? t('settings.modelDeleteConfirm') : t('settings.modelDelete')}
+              </button>
+            ) : (
               <button
                 type="button"
                 className="btn-outline"
                 disabled={modelBusy}
                 onClick={actions.downloadModel}
               >
-                {modelBusy ? 'Descargando…' : 'Descargar'}
+                {modelBusy ? t('settings.modelDownloading') : t('settings.modelDownload')}
               </button>
             )}
           </div>
@@ -133,18 +234,15 @@ export function SettingsScreen() {
               <div className="progress-fill" style={{ width: `${progress.percent}%` }} />
             </div>
           )}
-          <div className="setting-hint">
-            El modelo pesa ~490 MB. Una vez descargado, no necesitas conexión a internet.
-            El modelo no distingue hablantes, así que las líneas salen sin nombre.
-          </div>
+          <div className="setting-hint">{t('settings.modelHint')}</div>
         </section>
       )}
 
       {settings.transcriptionService === 'elevenlabs' && (
         <section className="settings-group">
-          <h2 className="settings-group-label">Configuración de ElevenLabs</h2>
+          <h2 className="settings-group-label">{t('settings.elevenLabsGroup')}</h2>
           <div>
-            <div className="setting-name">API Key</div>
+            <div className="setting-name">{t('settings.apiKey')}</div>
             <div className="api-key-row">
               <input
                 type="password"
@@ -163,18 +261,18 @@ export function SettingsScreen() {
                 disabled={!apiKeyDirty}
                 onClick={saveApiKey}
               >
-                Guardar
+                {t('settings.save')}
               </button>
             </div>
             <div className="setting-hint">
               {apiKeyDirty ? (
-                <span className="setting-dirty">Sin guardar · Enter para guardar</span>
+                <span className="setting-dirty">{t('settings.apiKeyDirty')}</span>
               ) : settings.elevenLabsApiKey ? (
-                <span className="setting-saved">Clave guardada.</span>
+                <span className="setting-saved">{t('settings.apiKeySaved')}</span>
               ) : (
-                'Sin clave: la transcripción con ElevenLabs fallará.'
+                t('settings.apiKeyMissing')
               )}{' '}
-              Obtén la tuya en{' '}
+              {t('settings.apiKeyGet')}{' '}
               <a href="https://elevenlabs.io/app/api-keys" target="_blank" rel="noreferrer">
                 elevenlabs.io/app/api-keys
               </a>
@@ -184,7 +282,7 @@ export function SettingsScreen() {
       )}
 
       <section className="settings-group">
-        <h2 className="settings-group-label">Formato de transcripción</h2>
+        <h2 className="settings-group-label">{t('settings.formatGroup')}</h2>
         <div className="segmented">
           {TRANSCRIPT_FORMATS.map((format) => (
             <button

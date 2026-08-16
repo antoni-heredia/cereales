@@ -1,3 +1,4 @@
+import { localeOf, translate, type Language } from '@/i18n';
 import type { TranscriptEntry } from '@/types';
 
 /** mm:ss, zero-padded — the prototype's timestamp format throughout. */
@@ -8,15 +9,15 @@ export function formatTime(totalSeconds: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
-export function formatToday(date = new Date()): string {
-  return date.toLocaleDateString('es-ES', {
+export function formatToday(lang: Language, date = new Date()): string {
+  return date.toLocaleDateString(localeOf(lang), {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
   });
 }
 
-export function formatRecordingDate(iso: string): string {
+export function formatRecordingDate(iso: string, lang: Language): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
 
@@ -25,9 +26,13 @@ export function formatRecordingDate(iso: string): string {
     date.getFullYear() === today.getFullYear() &&
     date.getMonth() === today.getMonth() &&
     date.getDate() === today.getDate();
-  if (sameDay) return 'Hoy';
+  if (sameDay) return translate(lang, 'date.today');
 
-  return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+  return date.toLocaleDateString(localeOf(lang), {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 /**
@@ -47,7 +52,14 @@ export function nearestEntryIndex(entries: TranscriptEntry[], timeSec: number): 
   return best;
 }
 
-/** Shortens `~/Documents/cereales/grabaciones` to `grabaciones` for the sidebar. */
+/** Model sizes, from a few dozen megabytes to a couple of gigabytes. */
+export function formatBytes(bytes: number): string {
+  if (bytes <= 0) return '—';
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+}
+
+/** Shortens `~/Documents/cereales/audio` to `audio` for the sidebar. */
 export function folderLeaf(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] ?? path;

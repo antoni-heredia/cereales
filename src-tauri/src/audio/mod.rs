@@ -1,4 +1,4 @@
-//! Comandos de grabación y estado del grabador.
+//! Recording commands and recorder state.
 
 #[cfg(windows)]
 mod win;
@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::AppHandle;
 
+use crate::errors;
 use crate::model::{AudioSource, StopResult};
 
 #[cfg(windows)]
@@ -21,9 +22,6 @@ pub struct RecorderState {
 pub struct RecorderState {
     _unused: Mutex<()>,
 }
-
-#[cfg(not(windows))]
-const ONLY_WINDOWS: &str = "La captura de audio nativa solo está implementada en Windows.";
 
 fn timestamp() -> u64 {
     SystemTime::now()
@@ -40,28 +38,46 @@ pub fn list_audio_sources() -> Result<Vec<AudioSource>, String> {
     }
     #[cfg(not(windows))]
     {
-        Err(ONLY_WINDOWS.to_string())
+        Err(errors::AUDIO_ONLY_WINDOWS.to_string())
     }
 }
 
+/// Starts capturing and returns the id of the recording that just began.
+///
+/// The id exists from this moment — it is the stem of the WAV — and the
+/// frontend needs it right away: a note or a screenshot taken mid-meeting is
+/// filed under it, and waiting until `stop_recording` to learn it would mean
+/// nothing could be persisted until then.
 #[tauri::command]
 pub fn start_recording(
     app: AppHandle,
     state: tauri::State<'_, RecorderState>,
     source_id: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     #[cfg(windows)]
     {
         let mut slot = state
             .session
             .lock()
-            .map_err(|_| "El estado del grabador quedó inconsistente.".to_string())?;
+            .map_err(|_| errors::AUDIO_RECORDER_STATE.to_string())?;
         if slot.is_some() {
-            return Err("Ya hay una grabación en curso.".to_string());
+            return Err(errors::AUDIO_ALREADY_RECORDING.to_string());
         }
 
         let folder = crate::storage::recording_dir(&app)?;
-        let path = folder.join(format!("grabacion-{}.wav", timestamp()));
+        // The filename stem is the id of the recording: the frontend derives it
+        // from this path, and the metadata sidecar is stored under it.
+        let path = folder.join(format!(
+            "{}{}.wav",
+            crate::storage::RECORDING_PREFIX,
+            timestamp()
+        ));
+
+        let id = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| errors::AUDIO_CREATE_FILE.to_string())?
+            .to_string();
 
         let spec = win::SourceSpec::parse(&source_id)?;
         let emitter = app.clone();
@@ -69,12 +85,12 @@ pub fn start_recording(
             let _ = tauri::Emitter::emit(&emitter, "audio://levels", levels);
         });
         *slot = Some(win::start(spec, path, sink)?);
-        Ok(())
+        Ok(id)
     }
     #[cfg(not(windows))]
     {
-        let _ = (app, state, source_id);
-        Err(ONLY_WINDOWS.to_string())
+        let _ = (app, state, source_id, timestamp);
+        Err(errors::AUDIO_ONLY_WINDOWS.to_string())
     }
 }
 
@@ -86,10 +102,10 @@ pub fn stop_recording(state: tauri::State<'_, RecorderState>) -> Result<StopResu
             let mut slot = state
                 .session
                 .lock()
-                .map_err(|_| "El estado del grabador quedó inconsistente.".to_string())?;
+                .map_err(|_| errors::AUDIO_RECORDER_STATE.to_string())?;
             slot.take()
         };
-        let handle = handle.ok_or_else(|| "No hay ninguna grabación en curso.".to_string())?;
+        let handle = handle.ok_or_else(|| errors::AUDIO_NOT_RECORDING.to_string())?;
 
         let path = handle.path.clone();
         let duration_sec = handle.started.elapsed().as_secs();
@@ -103,6 +119,6 @@ pub fn stop_recording(state: tauri::State<'_, RecorderState>) -> Result<StopResu
     #[cfg(not(windows))]
     {
         let _ = state;
-        Err(ONLY_WINDOWS.to_string())
+        Err(errors::AUDIO_ONLY_WINDOWS.to_string())
     }
 }

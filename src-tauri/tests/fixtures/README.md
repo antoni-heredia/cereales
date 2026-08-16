@@ -1,10 +1,11 @@
-# Fixtures de audio
+# Audio fixtures
 
-`voz-es.wav` — voz sintetizada en español, mono 16 kHz, el mismo formato que
-escribe el grabador. Lo usa el test de transcripción para comprobar whisper con
-habla real en vez de con ruido.
+`voz-es.wav` — synthesized Spanish speech, mono 16 kHz, the same format the
+recorder writes. The transcription test uses it to exercise whisper against real
+speech rather than noise. It stays Spanish whatever the interface language is:
+what it checks is that `run_whisper` honours the language it is handed.
 
-Para regenerarlo (necesita la voz Helena de Windows):
+To regenerate it (needs the Windows Helena voice):
 
 ```powershell
 Add-Type -AssemblyName System.Speech

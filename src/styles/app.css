@@ -394,6 +394,22 @@
   color: var(--accent-deep);
 }
 
+/* Option with a right-hand detail: the model list shows its size there. */
+.source-option--split {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  text-align: left;
+}
+
+.source-option-meta {
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: var(--fw-regular);
+  white-space: nowrap;
+}
+
 /* -------------------------------------------------------- waveform + notes */
 
 .wave-row {
@@ -424,6 +440,11 @@
   transition: transform 80ms linear;
 }
 
+.wave-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .notes-toggle {
   padding: 8px 14px;
   background: transparent;
@@ -433,8 +454,14 @@
   border: 1px solid var(--border);
 }
 
-.notes-toggle:hover {
+.notes-toggle:hover:not(:disabled) {
   background: var(--surface-hover);
+}
+
+.notes-toggle:disabled {
+  color: var(--text-faint);
+  border-color: var(--border-hairline);
+  cursor: default;
 }
 
 .notes-toggle--on {
@@ -668,7 +695,7 @@
   margin-bottom: 20px;
 }
 
-/* La caja entera es el campo: las fichas van dentro y el input ocupa el resto. */
+/* The whole box is the field: chips sit inside it and the input takes the rest. */
 .tag-input {
   display: flex;
   flex-wrap: wrap;
@@ -804,8 +831,8 @@
   padding-right: 8px;
 }
 
-/* Es un <button>: al pulsarlo el audio salta a esa frase. El reset global ya le
-   quita el aspecto de botón, solo falta que ocupe la fila entera. */
+/* This is a <button>: clicking it jumps the audio to that utterance. The global
+   reset already strips the button look; it just needs to fill the whole row. */
 .entry {
   display: flex;
   gap: 14px;
@@ -833,8 +860,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Los hijos van en <span> porque un <button> solo admite contenido de frase;
-   se les devuelve el comportamiento de bloque a mano. */
+/* The children are <span>s because a <button> only accepts phrasing content;
+   block behaviour is given back to them by hand. */
 .entry-body {
   display: block;
   min-width: 0;
@@ -869,9 +896,12 @@
   overflow-y: auto;
 }
 
+/* A container, not a button: the text seeks the audio and the thumbnail opens
+   the viewer, so the card holds two targets rather than being one. */
 .note-card {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border-soft);
@@ -882,6 +912,12 @@
   border-color: var(--accent);
 }
 
+.note-card-seek {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
 .note-card--active {
   background: var(--accent-tint);
 }
@@ -889,4 +925,285 @@
 .note-card-text {
   font-size: 13px;
   line-height: 1.4;
+}
+
+/* ---------------------------------------------------- screenshot thumbnails */
+
+.shot-thumb-button {
+  display: block;
+  max-width: 220px;
+  border: 1px solid var(--border-soft);
+  line-height: 0;
+}
+
+.shot-thumb-button:hover {
+  border-color: var(--accent);
+}
+
+.shot-thumb {
+  display: block;
+  width: 100%;
+}
+
+.note-row-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ------------------------------------------------------- screenshot editor */
+
+.shot-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: var(--scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.shot-panel {
+  background: var(--bg);
+  border: var(--rule) solid var(--text);
+  box-shadow: var(--shadow-dropdown);
+  width: min(1000px, 100%);
+  max-height: 100%;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* The viewer shows an image rather than a working surface, so it gets the room
+   the editor spends on its toolbars. */
+.shot-panel--view {
+  width: min(1200px, 100%);
+}
+
+.shot-full {
+  display: block;
+  max-width: 100%;
+  max-height: 72vh;
+  height: auto;
+  margin: auto;
+}
+
+.shot-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shot-title {
+  font-size: 18px;
+  font-weight: var(--fw-black);
+}
+
+.shot-time {
+  font-size: 13px;
+  font-weight: var(--fw-bold);
+  color: var(--accent-deep);
+  font-variant-numeric: tabular-nums;
+}
+
+.shot-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Pushes undo and the crop button to the far end of the toolbar: they act on
+   the image, they are not another tool to pick. */
+.shot-toolbar-gap {
+  flex: 1;
+}
+
+.shot-tool {
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: var(--fw-bold);
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.shot-tool:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.shot-tool:disabled {
+  color: var(--text-faint);
+  border-color: var(--border-hairline);
+  cursor: default;
+}
+
+.shot-tool--active {
+  background: var(--accent-tint);
+  color: var(--accent-deep);
+  border-color: var(--accent);
+}
+
+.shot-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.shot-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shot-group-label {
+  font-size: 12px;
+  font-weight: var(--fw-bold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Stripped back to a square track and thumb: the native control is rounded,
+   and nothing else in the app is. */
+.shot-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 130px;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.shot-slider::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--border);
+}
+
+.shot-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 9px;
+  height: 18px;
+  margin-top: -8px;
+  background: var(--accent);
+  border: 1px solid var(--text);
+}
+
+.shot-slider:disabled {
+  cursor: default;
+}
+
+.shot-slider:disabled::-webkit-slider-thumb {
+  background: var(--text-faint);
+  border-color: var(--border-hairline);
+}
+
+/* Fixed width and tabular figures, so the row does not shift as the number
+   goes from one digit to two. */
+.shot-weight-value {
+  width: 22px;
+  font-size: 13px;
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-muted);
+}
+
+.shot-swatch {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  padding: 0;
+}
+
+/* The ring rather than a border swap, so picking white does not make the
+   selected swatch disappear into the panel. */
+.shot-swatch--active {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.shot-swatch:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.shot-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.shot-stage {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  display: flex;
+  justify-content: center;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* The canvas keeps the capture's own pixel size and is only scaled down for
+   display, so there is one coordinate system to reason about. */
+.shot-canvas {
+  max-width: 100%;
+  max-height: 52vh;
+  height: auto;
+  /* Without this the flex parent stretches it to the stage's height, and a
+     canvas stretched on one axis shows a distorted preview: the crop rectangle
+     would not be the shape the export ends up with. */
+  align-self: center;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.shot-text-input {
+  position: absolute;
+  border: 1px solid var(--accent);
+  background: var(--bg);
+  padding: 2px 6px;
+  font-weight: var(--fw-bold);
+  min-width: 160px;
+}
+
+.shot-text-input:focus {
+  outline: none;
+}
+
+.shot-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shot-caption-label {
+  font-size: 12px;
+  font-weight: var(--fw-bold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.shot-caption-field {
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.shot-caption-field:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.shot-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }

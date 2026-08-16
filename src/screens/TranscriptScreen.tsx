@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { ScreenshotEditor } from '@/components/ScreenshotEditor';
+import { ScreenshotViewer } from '@/components/ScreenshotViewer';
 import { TagInput } from '@/components/TagInput';
+import { useI18n } from '@/i18n';
 import { formatRecordingDate, formatTime, nearestEntryIndex } from '@/lib/format';
 import { useApp } from '@/state/store';
 
@@ -11,9 +14,13 @@ export function TranscriptScreen() {
     activeEntryIndex,
     progress,
     transcribingRecordingId,
+    shotDraft,
+    shotView,
+    shotBusy,
     error,
     actions,
   } = useApp();
+  const { lang, t } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
   const entryRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -30,13 +37,13 @@ export function TranscriptScreen() {
     }
   }, [activeEntryIndex]);
 
-  // Todo hook va antes de este return: si saliera antes, el número de hooks
-  // cambiaría al llegar la primera grabación y React se rompería.
+  // Every hook goes above this return: if it bailed out earlier, the number of
+  // hooks would change once the first recording arrived and React would break.
   const recording = recordings.find((r) => r.id === selectedRecordingId) ?? recordings[0];
   if (!recording) {
     return (
       <div className="screen screen--transcript">
-        <div className="empty-state">No hay ninguna grabación seleccionada.</div>
+        <div className="empty-state">{t('transcript.noSelection')}</div>
       </div>
     );
   }
@@ -47,10 +54,10 @@ export function TranscriptScreen() {
   const isTranscribing = transcribingRecordingId === recording.id;
 
   /**
-   * Lleva el reproductor al momento en que se tomó la nota.
+   * Moves the player to the moment the note was taken.
    *
-   * Antes de que carguen los metadatos el elemento ignora `currentTime`, así que
-   * en ese caso el salto se aplaza al primer `loadedmetadata`.
+   * Before the metadata loads the element ignores `currentTime`, so in that case
+   * the seek is deferred to the first `loadedmetadata`.
    */
   const seekTo = (timeSec: number) => {
     const audio = audioRef.current;
@@ -58,8 +65,8 @@ export function TranscriptScreen() {
     const apply = () => {
       audio.currentTime = timeSec;
       void audio.play().catch(() => {
-        // Reproducción rechazada (por ejemplo, sin gesto previo del usuario):
-        // el salto ya está hecho y basta con darle al play.
+        // Playback rejected (for instance, with no prior user gesture): the
+        // seek already happened and pressing play is enough.
       });
     };
     if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) apply();
@@ -68,7 +75,7 @@ export function TranscriptScreen() {
 
   const handleNoteClick = (timeSec: number) => {
     seekTo(timeSec);
-    // Además resalta la frase de la transcripción, si ya se transcribió.
+    // Also highlights the transcript line, if it has been transcribed already.
     actions.jumpToNote(timeSec);
   };
 
@@ -101,7 +108,7 @@ export function TranscriptScreen() {
             <h1 className="screen-title screen-title--sm">{recording.title}</h1>
           )}
           <div className="screen-sub">
-            {formatRecordingDate(recording.startedAt)} · {formatTime(recording.durationSec)}
+            {formatRecordingDate(recording.startedAt, lang)} · {formatTime(recording.durationSec)}
           </div>
         </div>
         <div className="transcript-actions">
@@ -115,18 +122,18 @@ export function TranscriptScreen() {
                   setIsRenaming(true);
                 }}
               >
-                Renombrar
+                {t('transcript.rename')}
               </button>
               <button
                 type="button"
                 className="btn-outline btn-sm btn-danger"
                 onClick={() => {
-                  if (confirm('¿Eliminar grabación y todos sus archivos?')) {
+                  if (confirm(t('transcript.deleteConfirm'))) {
                     actions.deleteRecording(recording.id);
                   }
                 }}
               >
-                Eliminar
+                {t('transcript.delete')}
               </button>
             </>
           )}
@@ -135,14 +142,12 @@ export function TranscriptScreen() {
       <div className="rule" />
 
       <div className="tags-section">
-        <div className="setting-name">Etiquetas</div>
+        <div className="setting-name">{t('transcript.tags')}</div>
         <TagInput
           tags={recording.tags ?? []}
           onChange={(tags) => actions.updateRecordingTags(recording.id, tags)}
         />
-        <div className="setting-hint">
-          Una coma cierra la etiqueta. Van al frontmatter de la nota de Obsidian.
-        </div>
+        <div className="setting-hint">{t('transcript.tagsHint')}</div>
       </div>
 
       {error && (
@@ -165,13 +170,13 @@ export function TranscriptScreen() {
 
       {entries.length === 0 && !isTranscribing && (
         <div className="transcribe-card">
-          <div className="transcribe-label">No hay transcripción disponible</div>
+          <div className="transcribe-label">{t('transcript.missing')}</div>
           <button
             type="button"
             className="btn-solid"
             onClick={() => actions.transcribeRecording(recording.id)}
           >
-            Transcribir
+            {t('transcript.transcribe')}
           </button>
         </div>
       )}
@@ -180,11 +185,11 @@ export function TranscriptScreen() {
         <div className="pending-card">
           <div className="pending-mark" aria-hidden="true" />
           <div className="pending-label">
-            {progress?.stage === 'transcribiendo' && progress.percent >= 0
-              ? `Transcribiendo audio… ${progress.percent}%`
-              : 'Transcribiendo audio…'}
+            {progress?.stage === 'transcribing' && progress.percent >= 0
+              ? t('transcript.workingPercent', { percent: progress.percent })
+              : t('transcript.working')}
           </div>
-          {progress?.stage === 'transcribiendo' && progress.percent >= 0 && (
+          {progress?.stage === 'transcribing' && progress.percent >= 0 && (
             <div className="progress-track" style={{ width: '100%' }}>
               <div className="progress-fill" style={{ width: `${progress.percent}%` }} />
             </div>
@@ -192,8 +197,8 @@ export function TranscriptScreen() {
         </div>
       )}
 
-      {/* Las notas no dependen de la transcripción: son lo que se escribió
-          durante la reunión y deben verse aunque aún no se haya transcrito. */}
+      {/* Notes do not depend on the transcript: they are what was written
+          during the meeting and must show even before transcribing. */}
       {(entries.length > 0 || notes.length > 0) && (
         <div className="transcript-layout">
           {entries.length > 0 && (
@@ -207,11 +212,11 @@ export function TranscriptScreen() {
                   }}
                   className={`entry${activeEntryIndex === index ? ' entry--active' : ''}`}
                   onClick={() => seekTo(entry.timeSec)}
-                  title="Ir a este momento del audio"
+                  title={t('transcript.seek')}
                 >
                   <span className="entry-time">{formatTime(entry.timeSec)}</span>
                   <span className="entry-body">
-                    {/* whisper.cpp no diariza: sin nombre, no se pinta la línea. */}
+                    {/* whisper.cpp does not diarize: with no name, no line. */}
                     {entry.speaker && <span className="entry-speaker">{entry.speaker}</span>}
                     <span className="entry-text">{entry.text}</span>
                   </span>
@@ -221,30 +226,75 @@ export function TranscriptScreen() {
           )}
 
           <div className="notes-column">
-            <div className="live-notes-label">Notas tomadas durante la reunión</div>
+            <div className="live-notes-label">{t('transcript.notesTitle')}</div>
             <div className="notes-column-list">
               {notes.length === 0 && (
-                <div className="empty-state">No se tomaron notas en esta reunión.</div>
+                <div className="empty-state">{t('transcript.notesEmpty')}</div>
               )}
               {notes.map((note) => {
                 const isActive =
-                  entries.length > 0 && nearestEntryIndex(entries, note.timeSec) === activeEntryIndex;
+                  entries.length > 0 &&
+                  nearestEntryIndex(entries, note.timeSec) === activeEntryIndex;
+                // Two targets, so the card is a container rather than a button:
+                // the text seeks the audio and the thumbnail opens the viewer.
+                // Nesting one button inside another would not be valid HTML,
+                // and a click handler on the image alone would not be reachable
+                // from the keyboard.
                 return (
-                  <button
+                  <div
                     key={note.id}
-                    type="button"
                     className={`note-card${isActive ? ' note-card--active' : ''}`}
-                    onClick={() => handleNoteClick(note.timeSec)}
-                    title="Ir a este momento del audio"
                   >
-                    <span className="note-time">{formatTime(note.timeSec)}</span>
-                    <span className="note-card-text">{note.text}</span>
-                  </button>
+                    <button
+                      type="button"
+                      className="note-card-seek"
+                      onClick={() => handleNoteClick(note.timeSec)}
+                      title={t('transcript.seek')}
+                    >
+                      <span className="note-time">{formatTime(note.timeSec)}</span>
+                      <span className="note-card-text">{note.text}</span>
+                    </button>
+                    {note.image && (
+                      <button
+                        type="button"
+                        className="shot-thumb-button"
+                        title={t('shot.view')}
+                        onClick={() => actions.openShot(note)}
+                      >
+                        <img
+                          className="shot-thumb"
+                          src={actions.attachmentUrl(note.image)}
+                          alt={t('transcript.shotAlt', { time: formatTime(note.timeSec) })}
+                        />
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
           </div>
         </div>
+      )}
+
+      {shotView && (
+        <ScreenshotViewer
+          src={actions.attachmentUrl(shotView.fileName)}
+          timeSec={shotView.timeSec}
+          caption={shotView.caption}
+          onEdit={() => actions.editShot(shotView.fileName, shotView.timeSec)}
+          onClose={actions.closeShot}
+        />
+      )}
+
+      {shotDraft && (
+        <ScreenshotEditor
+          source={shotDraft.source}
+          timeSec={shotDraft.timeSec}
+          editing={Boolean(shotDraft.fileName)}
+          onSave={actions.commitScreenshot}
+          onCancel={actions.cancelScreenshot}
+          busy={shotBusy}
+        />
       )}
     </div>
   );
