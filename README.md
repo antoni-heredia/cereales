@@ -7,6 +7,17 @@ notes that link back to the exact point in the transcript.
 The interface is available in **English and Spanish**, and is ported from the
 Claude Design prototype (`cereales.dc.html`).
 
+![Recording, with the notes taken so far](docs/screenshots/record.png)
+
+Every note is stamped with the second it was written at, so the transcript and
+the notes stay side by side afterwards: clicking a note moves the player and
+lights up the sentence that was being said.
+
+![A transcript with its notes column](docs/screenshots/transcript.png)
+
+> The screenshots use the sample data the interface ships with for `npm run
+> dev`; the meetings in them never happened.
+
 ## Motivation
 
 Granola got the workflow right: you record the meeting, it transcribes itself,
@@ -34,7 +45,9 @@ or an Obsidian note — but it is an early version and it shows:
   different implementation, not a patch.
 - **No automatic summaries.** That is Granola's headline feature and it does not
   exist here yet: cereales gives you the transcript and your notes, not a
-  written-up set of minutes.
+  written-up set of minutes. The note is plain Markdown in your vault, though,
+  so an assistant can write them from it — see [Summaries are somebody else's
+  job](#summaries-are-somebody-elses-job).
 - **No sync and no cloud.** Recordings and notes live on your disk. No accounts,
   no sharing, no mobile app.
 - **No calendar integration.** Meetings are started by hand; nothing notices you
@@ -85,6 +98,30 @@ and your tags, the audio embedded with `![[…]]` so it plays from the note
 itself, and the notes you took during the meeting as *callouts* attached to the
 sentence you wrote them against. Tags are edited on the recording screen. TXT,
 Markdown and SRT are still in Settings for anyone who wants them.
+
+![The generated note open in Obsidian](docs/screenshots/obsidian.png)
+
+Nothing in that note is written by a plugin: it is a plain Markdown file, and
+the vault only gains the three folders on the left. A screenshot taken during
+the meeting is a note like any other, so it lands in its callout with the rest.
+
+![A screenshot note in its callout](docs/screenshots/obsidian-screenshot.png)
+
+### Summaries are somebody else's job
+
+cereales does not write minutes, and the transcript it leaves is deliberately
+literal — it is what was said, not what it meant. What being plain Markdown in
+your own vault buys you is that anything you already use on your notes works on
+this one too: hand the transcript and the notes to an assistant, ask for the
+decisions and who owes what, and file the answer next to it.
+
+![A summary note beside the transcript it came from](docs/screenshots/obsidian-summary.png)
+
+That note is written by Claude, not by cereales, and it stays a separate file on
+purpose. A summary is a judgement about a meeting the app did not attend, so a
+bad one has to be throwable without taking the recording, the transcript or the
+notes with it — and the `[[…]]` link back means the literal version is always
+one click away when the summary is wrong.
 
 ### Name migration
 
@@ -167,6 +204,8 @@ downloaded models stay on disk until you delete them from that same screen.
 
 Without a model you can still record, but transcription fails with a warning and
 the recording is kept anyway.
+
+![The settings screen](docs/screenshots/settings.png)
 
 The interface alone, in a browser and with sample data (no Rust needed):
 
