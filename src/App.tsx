@@ -1,4 +1,5 @@
 import { Sidebar } from '@/components/Sidebar';
+import { I18nProvider } from '@/i18n';
 import { HistoryScreen } from '@/screens/HistoryScreen';
 import { RecordScreen } from '@/screens/RecordScreen';
 import { SettingsScreen } from '@/screens/SettingsScreen';
@@ -21,13 +22,18 @@ function CurrentScreen() {
 
 export default function App() {
   return (
-    <AppStateProvider>
-      <div className="app">
-        <Sidebar />
-        <main className="main">
-          <CurrentScreen />
-        </main>
-      </div>
-    </AppStateProvider>
+    // i18n sits above the state provider: the store reads `t` to build default
+    // titles and error messages, and it pushes the saved preference back down
+    // once the settings have loaded.
+    <I18nProvider>
+      <AppStateProvider>
+        <div className="app">
+          <Sidebar />
+          <main className="main">
+            <CurrentScreen />
+          </main>
+        </div>
+      </AppStateProvider>
+    </I18nProvider>
   );
 }

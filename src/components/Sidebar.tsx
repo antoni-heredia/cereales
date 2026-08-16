@@ -1,17 +1,20 @@
+import { useI18n } from '@/i18n';
 import { useApp } from '@/state/store';
 import { folderLeaf } from '@/lib/format';
+import type { MessageKey } from '@/i18n';
 import type { ScreenKey } from '@/types';
 
-const NAV: { key: ScreenKey; label: string }[] = [
-  { key: 'record', label: 'Grabar' },
-  { key: 'history', label: 'Historial' },
-  { key: 'settings', label: 'Ajustes' },
+const NAV: { key: ScreenKey; label: MessageKey }[] = [
+  { key: 'record', label: 'nav.record' },
+  { key: 'history', label: 'nav.history' },
+  { key: 'settings', label: 'nav.settings' },
 ];
 
 export function Sidebar() {
   const { screen, settings, actions } = useApp();
+  const { t } = useI18n();
   // The transcript screen is reached from the history list, so it keeps
-  // "Historial" lit rather than leaving no nav item active.
+  // "History" lit rather than leaving no nav item active.
   const activeKey: ScreenKey = screen === 'transcript' ? 'history' : screen;
 
   return (
@@ -30,13 +33,13 @@ export function Sidebar() {
             aria-current={activeKey === item.key ? 'page' : undefined}
             onClick={() => actions.goScreen(item.key)}
           >
-            {item.label}
+            {t(item.label)}
           </button>
         ))}
       </div>
 
       <div className="folder-badge" title={settings.storageRoot}>
-        {settings.obsidianVaultPath ? 'Obsidian' : 'Guardando en'}:{' '}
+        {settings.obsidianVaultPath ? t('sidebar.obsidian') : t('sidebar.savingTo')}:{' '}
         <strong>{folderLeaf(settings.obsidianVaultPath ?? settings.storageRoot)}</strong>
       </div>
     </nav>

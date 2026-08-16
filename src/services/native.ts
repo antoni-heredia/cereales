@@ -18,7 +18,7 @@ import type {
 import { serializeTranscript, transcriptRelPath } from '@/lib/serialize';
 import type { AudioService, StopResult, StorageService, TranscriptionService } from './types';
 
-/** Suscripción a un evento de Tauri con cancelación segura antes de resolverse. */
+/** Subscribes to a Tauri event, safe to cancel before the listener resolves. */
 function subscribe<T>(event: string, cb: (payload: T) => void): () => void {
   const pending = listen<T>(event, (e) => cb(e.payload));
   let disposed = false;
@@ -35,18 +35,27 @@ function subscribe<T>(event: string, cb: (payload: T) => void): () => void {
 
 export const nativeAudio: AudioService = {
   listSources: () => invoke<AudioSource[]>('list_audio_sources'),
-  start: (sourceId) => invoke<void>('start_recording', { sourceId }),
+  start: (sourceId) => invoke<string>('start_recording', { sourceId }),
   stop: () => invoke<StopResult>('stop_recording'),
 
   onLevels: (cb) => subscribe<number[]>('audio://levels', cb),
 };
 
-export const nativeTranscription: TranscriptionService = {
-  transcribe: (audioPath) => invoke<TranscriptEntry[]>('transcribe', { audioPath }),
-  modelStatus: () => invoke<ModelStatus>('model_status'),
-  downloadModel: () => invoke<ModelStatus>('download_model'),
+/**
+ * `model` is the catalogue id the user picked. It is baked into the service
+ * rather than threaded through every call site: `updateServices` rebuilds this
+ * whenever the setting changes, exactly like the ElevenLabs API key.
+ */
+export const nativeTranscription = (model: string): TranscriptionService => ({
+  // Rust only needs the audio language; whisper produces no labels of its own.
+  transcribe: (audioPath, lang) =>
+    invoke<TranscriptEntry[]>('transcribe', { audioPath, lang: lang.audio, model }),
+  modelStatus: () => invoke<ModelStatus>('model_status', { model }),
+  listModels: () => invoke<ModelStatus[]>('list_models'),
+  downloadModel: () => invoke<ModelStatus>('download_model', { model }),
+  deleteModel: (id) => invoke<ModelStatus[]>('delete_model', { model: id }),
   onProgress: (cb) => subscribe<NativeProgress>('model://progress', cb),
-};
+});
 
 export const nativeStorage: StorageService = {
   loadSettings: () => invoke<Settings>('load_settings'),
@@ -56,11 +65,19 @@ export const nativeStorage: StorageService = {
   saveRecording: (recording) => invoke<void>('save_recording', { recording }),
 
   loadTranscript: (recordingId) => invoke<Transcript | null>('load_transcript', { recordingId }),
+  writeNotes: (recordingId, notes) => invoke<void>('write_notes', { recordingId, notes }),
 
-  async writeTranscript(recording, transcript, format) {
-    // Serialization stays in TS so all formats have one implementation, y el
-    // nombre de la nota va con ella; Rust solo owns the bytes-to-disk step.
-    const contents = serializeTranscript(recording, transcript, format);
+  captureScreen: () => invoke<string>('capture_screen'),
+  saveScreenshot: (recordingId, pngBase64) =>
+    invoke<string>('save_screenshot', { recordingId, pngBase64 }),
+  readScreenshot: (fileName) => invoke<string>('read_screenshot', { fileName }),
+  replaceScreenshot: (fileName, pngBase64) =>
+    invoke<void>('replace_screenshot', { fileName, pngBase64 }),
+
+  async writeTranscript(recording, transcript, format, lang) {
+    // Serialization stays in TS so every format has one implementation, and the
+    // note's name travels with it; Rust only owns the bytes-to-disk step.
+    const contents = serializeTranscript(recording, transcript, format, lang);
     return invoke<string>('write_transcript', {
       recordingId: recording.id,
       contents,
@@ -72,9 +89,13 @@ export const nativeStorage: StorageService = {
   deleteRecording: (recordingId) => invoke<void>('delete_recording', { recordingId }),
   renameRecording: (recordingId, newTitle, newRelPath) =>
     invoke<void>('rename_recording', { recordingId, newTitle, newRelPath }),
-  // `asset://` lo sirve el propio Tauri: soporta Range, así que la barra de
-  // progreso del reproductor funciona sin cargar el WAV entero en memoria.
+  // `asset://` is served by Tauri itself and supports Range requests, so the
+  // player's scrub bar works without loading the whole WAV into memory.
   audioUrl: (audioPath) => convertFileSrc(audioPath),
+  // The backend widens the `asset://` scope to cover `attachments/`, which the
+  // static scope in the config would miss for a vault on another drive.
+  attachmentUrl: (storageRoot, fileName) =>
+    convertFileSrc(`${storageRoot}\\attachments\\${fileName}`),
 
   async pickFolder(title, current) {
     const selected = await open({ directory: true, multiple: false, title, defaultPath: current });

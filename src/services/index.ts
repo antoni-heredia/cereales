@@ -10,12 +10,12 @@ export function isTauri(): boolean {
 }
 
 /*
- * Dentro de Tauri todo va contra el backend nativo. Los mocks siguen existiendo
- * para `npm run dev` en el navegador, donde no hay WASAPI ni whisper: ahí la
- * comprobación `isTauri()` los selecciona sola.
+ * Inside Tauri everything goes through the native backend. The mocks still
+ * exist for `npm run dev` in a browser, where there is no WASAPI and no
+ * whisper: the `isTauri()` check picks them on its own there.
  *
- *   audio         -> src-tauri/src/audio/win.rs   (WASAPI)
- *   transcription -> src-tauri/src/transcription.rs (whisper.cpp) o ElevenLabs API
+ *   audio         -> src-tauri/src/audio/win.rs      (WASAPI)
+ *   transcription -> src-tauri/src/transcription.rs  (whisper.cpp) or the ElevenLabs API
  *   storage       -> src-tauri/src/storage.rs
  */
 const NATIVE_AUDIO_READY = true;
@@ -27,15 +27,19 @@ function build(settings?: Settings): Services {
   const audioNative = inTauri && NATIVE_AUDIO_READY;
   const storageNative = inTauri && NATIVE_STORAGE_READY;
 
-  // Seleccionar servicio de transcripción según configuración
+  // Pick the transcription service according to the settings.
   let transcription;
   let transcriptionNative = false;
 
   if (settings?.transcriptionService === 'elevenlabs') {
     transcription = elevenLabsTranscription(settings.elevenLabsApiKey);
-    transcriptionNative = false; // ElevenLabs es API externa
+    // ElevenLabs is an external API, not the native backend.
+    transcriptionNative = false;
   } else {
-    transcription = inTauri ? nativeTranscription : mockTranscription;
+    // Before the settings arrive from disk, the historical model is the safe
+    // guess: it is the one an existing install already has downloaded.
+    const model = settings?.whisperModel || 'small';
+    transcription = inTauri ? nativeTranscription(model) : mockTranscription(model);
     transcriptionNative = inTauri && NATIVE_TRANSCRIPTION_READY;
   }
 
@@ -51,10 +55,10 @@ function build(settings?: Settings): Services {
   };
 }
 
-// Build inicial con servicio por defecto
+/** Initial build, with the default transcription service. */
 export let services: Services = build();
 
-// Función para actualizar el servicio cuando cambian las settings
+/** Rebuilds the services when the settings change. */
 export function updateServices(settings: Settings): void {
   services = build(settings);
 }

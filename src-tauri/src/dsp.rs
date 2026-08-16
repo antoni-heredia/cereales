@@ -1,7 +1,7 @@
-//! Conversiones de señal entre lo que entrega WASAPI y lo que necesitan el
-//! archivo WAV, el medidor de niveles y whisper.
+//! Signal conversions between what WASAPI delivers and what the WAV file, the
+//! level meter and whisper need.
 
-/// Mezcla audio intercalado a mono promediando los canales.
+/// Mixes interleaved audio down to mono by averaging the channels.
 pub fn to_mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
     if channels <= 1 {
         return interleaved.to_vec();
@@ -16,12 +16,12 @@ pub fn to_mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
     out
 }
 
-/// Remuestreo por promediado de ventana.
+/// Resampling by window averaging.
 ///
-/// El promedio actúa como filtro de media móvil, que quita el grueso del
-/// aliasing al bajar de 44.1/48 kHz a los 16 kHz que pide whisper. No es un
-/// remuestreador de calidad de audio, pero para voz destinada a ASR sobra y
-/// evita arrastrar una dependencia más.
+/// The average acts as a moving-average filter, which removes most of the
+/// aliasing when going from 44.1/48 kHz down to the 16 kHz whisper asks for. It
+/// is not an audio-quality resampler, but for speech destined for ASR it is
+/// plenty and it avoids dragging in another dependency.
 pub fn resample(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
     if input.is_empty() || src_rate == 0 || dst_rate == 0 || src_rate == dst_rate {
         return input.to_vec();
@@ -42,8 +42,8 @@ pub fn resample(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
     out
 }
 
-/// Reparte las muestras en `bands` tramos y devuelve el RMS de cada uno,
-/// escalado a 0..1 para el medidor de la interfaz.
+/// Splits the samples into `bands` slices and returns the RMS of each one,
+/// scaled to 0..1 for the meter in the interface.
 pub fn level_bands(samples: &[f32], bands: usize) -> Vec<f32> {
     if bands == 0 {
         return Vec::new();
@@ -63,14 +63,14 @@ pub fn level_bands(samples: &[f32], bands: usize) -> Vec<f32> {
         }
         let sum_sq: f32 = samples[start..end].iter().map(|s| s * s).sum();
         let rms = (sum_sq / (end - start) as f32).sqrt();
-        // La voz normal se mueve muy abajo en escala lineal; la raíz cuadrada
-        // reparte mejor el recorrido visible de las barras.
+        // Ordinary speech sits very low on a linear scale; the square root
+        // spreads the visible travel of the bars far better.
         out.push(rms.sqrt().clamp(0.0, 1.0));
     }
     out
 }
 
-/// Convierte f32 (-1..1) a i16 con saturación, para escribir el WAV.
+/// Converts f32 (-1..1) to i16 with saturation, for writing the WAV.
 pub fn f32_to_i16(sample: f32) -> i16 {
     (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
 }
@@ -80,16 +80,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mezcla_estereo_a_mono() {
-        // Dos frames: (1.0, 0.0) y (0.5, -0.5)
+    fn mixes_stereo_to_mono() {
+        // Two frames: (1.0, 0.0) and (0.5, -0.5)
         let out = to_mono(&[1.0, 0.0, 0.5, -0.5], 2);
         assert_eq!(out, vec![0.5, 0.0]);
     }
 
-    /// La longitud tiene que seguir la razón de frecuencias: si no, el audio
-    /// cambia de duración y las marcas de tiempo se desplazan.
+    /// The length has to follow the rate ratio: otherwise the audio changes
+    /// duration and the timestamps shift.
     #[test]
-    fn el_remuestreo_conserva_la_duracion() {
+    fn resampling_preserves_duration() {
         for (src, dst) in [(48_000u32, 16_000u32), (44_100, 16_000), (16_000, 16_000)] {
             let seconds = 2.0;
             let input = vec![0.0f32; (src as f64 * seconds) as usize];
@@ -97,28 +97,27 @@ mod tests {
             let got = out.len() as f64 / dst as f64;
             assert!(
                 (got - seconds).abs() < 0.01,
-                "{src}->{dst}: duró {got:.3}s en vez de {seconds}s"
+                "{src}->{dst}: lasted {got:.3}s instead of {seconds}s"
             );
         }
     }
 
-    /// Una senoidal muy por debajo de Nyquist debe sobrevivir al remuestreo con
-    /// amplitud parecida; si el filtro se la comiese, whisper recibiría voz
-    /// atenuada.
+    /// A sine well below Nyquist must survive resampling with a similar
+    /// amplitude; if the filter ate it, whisper would receive attenuated speech.
     #[test]
-    fn el_remuestreo_conserva_la_amplitud_de_voz() {
+    fn resampling_preserves_speech_amplitude() {
         let src = 48_000u32;
-        let freq = 300.0; // grave de voz humana
+        let freq = 300.0; // low end of the human voice
         let input: Vec<f32> = (0..src)
             .map(|i| (i as f32 / src as f32 * freq * std::f32::consts::TAU).sin())
             .collect();
         let out = resample(&input, src, 16_000);
         let peak = out.iter().fold(0f32, |a, s| a.max(s.abs()));
-        assert!(peak > 0.8, "la senoidal quedó atenuada a {peak:.3}");
+        assert!(peak > 0.8, "the sine was attenuated to {peak:.3}");
     }
 
     #[test]
-    fn los_niveles_van_de_cero_a_uno() {
+    fn levels_run_from_zero_to_one() {
         let bands = level_bands(&[1.0, -1.0, 1.0, -1.0], 2);
         assert_eq!(bands.len(), 2);
         assert!(bands.iter().all(|b| (0.0..=1.0).contains(b)));
@@ -126,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn la_conversion_a_i16_satura() {
+    fn the_i16_conversion_saturates() {
         assert_eq!(f32_to_i16(2.0), i16::MAX);
         assert_eq!(f32_to_i16(-2.0), -i16::MAX);
         assert_eq!(f32_to_i16(0.0), 0);

@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
+import { useI18n } from '@/i18n';
 
 /**
- * Obsidian no admite espacios dentro de una etiqueta, así que se cierran con
- * guion. Se normaliza al escribir, no al exportar, para que la ficha enseñe
- * exactamente lo que va a acabar en la nota.
+ * Obsidian does not allow spaces inside a tag, so they are closed up with a
+ * hyphen. Normalising happens while typing, not on export, so the chip shows
+ * exactly what will end up in the note.
  */
 function normalize(raw: string): string {
   return raw.trim().replace(/\s+/g, '-');
@@ -15,15 +16,16 @@ interface TagInputProps {
 }
 
 /**
- * Campo de etiquetas por fichas: la coma (o Enter) cierra la que se está
- * escribiendo. Cada cambio sale por `onChange`, no hay botón de guardar: añadir
- * o quitar una ficha ya es un gesto deliberado.
+ * Chip-based tag field: a comma (or Enter) closes the tag being typed. Every
+ * change goes out through `onChange`; there is no save button, since adding or
+ * removing a chip is already a deliberate gesture.
  */
 export function TagInput({ tags, onChange }: TagInputProps) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState('');
   const fieldRef = useRef<HTMLInputElement>(null);
 
-  /** Acepta varias de golpe: pegar `a, b, c` mete tres fichas. */
+  /** Accepts several at once: pasting `a, b, c` adds three chips. */
   const add = (raw: string) => {
     const added = raw
       .split(',')
@@ -37,11 +39,11 @@ export function TagInput({ tags, onChange }: TagInputProps) {
     setDraft('');
   };
 
-  const remove = (tag: string) => onChange(tags.filter((t) => t !== tag));
+  const remove = (tag: string) => onChange(tags.filter((existing) => existing !== tag));
 
   return (
-    // Pinchar en el hueco de al lado enfoca el campo, como en cualquier caja
-    // de texto: la caja es todo el recuadro, no solo el input.
+    // Clicking the empty space focuses the field, like any text box: the box is
+    // the whole frame, not just the input.
     <div className="tag-input" onClick={() => fieldRef.current?.focus()}>
       {tags.map((tag) => (
         <span key={tag} className="tag">
@@ -49,7 +51,7 @@ export function TagInput({ tags, onChange }: TagInputProps) {
           <button
             type="button"
             className="tag-remove"
-            aria-label={`Quitar la etiqueta ${tag}`}
+            aria-label={t('tags.remove', { tag })}
             onClick={(e) => {
               e.stopPropagation();
               remove(tag);
@@ -64,8 +66,8 @@ export function TagInput({ tags, onChange }: TagInputProps) {
         type="text"
         className="tag-field"
         value={draft}
-        placeholder={tags.length === 0 ? 'reunión, cliente' : ''}
-        aria-label="Añadir etiqueta"
+        placeholder={tags.length === 0 ? t('tags.placeholder') : ''}
+        aria-label={t('tags.add')}
         onChange={(e) => {
           const value = e.target.value;
           if (value.includes(',')) {
@@ -82,11 +84,11 @@ export function TagInput({ tags, onChange }: TagInputProps) {
           } else if (e.key === 'Escape') {
             setDraft('');
           } else if (e.key === 'Backspace' && draft === '' && tags.length > 0) {
-            // Con el campo vacío, borrar retrocede sobre la última ficha.
+            // With the field empty, backspace walks back over the last chip.
             onChange(tags.slice(0, -1));
           }
         }}
-        // Lo escrito a medias no se pierde al salir del campo.
+        // A half-typed tag is not lost when the field loses focus.
         onBlur={commitDraft}
       />
     </div>
