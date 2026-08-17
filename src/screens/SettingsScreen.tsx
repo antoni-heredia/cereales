@@ -1,11 +1,18 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { ModelPicker } from '@/components/ModelPicker';
+import { ServicePickerTabs } from '@/components/ServicePickerTabs';
 import { SourcePicker } from '@/components/SourcePicker';
-import { AUDIO_LANGUAGES, LANGUAGES, useI18n, type AudioLanguageSetting } from '@/i18n';
+import {
+  AUDIO_LANGUAGES,
+  LANGUAGES,
+  useI18n,
+  type AudioLanguageSetting,
+  type MessageKey,
+} from '@/i18n';
 import { formatBytes } from '@/lib/format';
 import { sourceLabel } from '@/lib/sources';
 import { useApp } from '@/state/store';
-import { TRANSCRIPT_FORMATS } from '@/types';
+import { TRANSCRIPT_FORMATS, TRANSCRIPTION_ENGINES, type TranscriptionEngine } from '@/types';
 
 /**
  * Renders a message whose `{placeholders}` become `<code>` elements. The
@@ -24,27 +31,93 @@ function withCode(template: string, values: Record<string, string>): ReactNode {
   });
 }
 
+/** Hint describing what the chosen default engine actually does. */
+const SERVICE_HINTS: Record<TranscriptionEngine, MessageKey> = {
+  local: 'settings.serviceLocalHint',
+  elevenlabs: 'settings.serviceElevenLabsHint',
+  deepgram: 'settings.serviceDeepgramHint',
+};
+
+/**
+ * The API key of one remote service.
+ *
+ * A component and not repeated markup because of the draft: the key is edited
+ * locally and only saved on commit, since writing it letter by letter would
+ * rewrite the settings file and rebuild the services on every keystroke, and
+ * leave no moment where the user can tell it was saved.
+ */
+function ApiKeySection({
+  title,
+  saved,
+  placeholder,
+  href,
+  linkText,
+  onSave,
+}: {
+  title: string;
+  saved: string;
+  placeholder: string;
+  href: string;
+  linkText: string;
+  onSave: (key: string) => void;
+}) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState(saved);
+
+  // Settings arrive from disk after the first render: without this the draft
+  // would keep the initial empty value.
+  useEffect(() => setDraft(saved), [saved]);
+
+  const dirty = draft !== saved;
+  const commit = () => {
+    if (dirty) onSave(draft.trim());
+  };
+
+  return (
+    <section className="settings-group">
+      <h2 className="settings-group-label">{title}</h2>
+      <div>
+        <div className="setting-name">{t('settings.apiKey')}</div>
+        <div className="api-key-row">
+          <input
+            type="password"
+            className="api-key-input"
+            placeholder={placeholder}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit();
+              if (e.key === 'Escape') setDraft(saved);
+            }}
+          />
+          <button type="button" className="btn-solid" disabled={!dirty} onClick={commit}>
+            {t('settings.save')}
+          </button>
+        </div>
+        <div className="setting-hint">
+          {dirty ? (
+            <span className="setting-dirty">{t('settings.apiKeyDirty')}</span>
+          ) : saved ? (
+            <span className="setting-saved">{t('settings.apiKeySaved')}</span>
+          ) : (
+            t('settings.apiKeyMissing')
+          )}{' '}
+          {t('settings.apiKeyGet')}{' '}
+          <a href={href} target="_blank" rel="noreferrer">
+            {linkText}
+          </a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function SettingsScreen() {
   const { settings, sources, model, models, modelBusy, progress, error, actions } = useApp();
   const { lang, t } = useI18n();
 
   const defaultSource = sources.find((s) => s.id === settings.defaultSourceId);
   const defaultSourceLabel = defaultSource ? sourceLabel(defaultSource, lang) : t('source.none');
-
-  // The key is edited as a draft and only saved on commit. Writing it letter by
-  // letter into the settings would rewrite the file and rebuild the services on
-  // every keystroke, and there would be no way to tell whether it got saved.
-  const [apiKeyDraft, setApiKeyDraft] = useState(settings.elevenLabsApiKey);
-
-  // Settings arrive from disk after the first render: without this the draft
-  // would keep the initial empty value.
-  useEffect(() => setApiKeyDraft(settings.elevenLabsApiKey), [settings.elevenLabsApiKey]);
-
-  const apiKeyDirty = apiKeyDraft !== settings.elevenLabsApiKey;
-
-  const saveApiKey = () => {
-    if (apiKeyDirty) actions.updateSettings({ elevenLabsApiKey: apiKeyDraft.trim() });
-  };
 
   // Language names stay in their own language, like the interface selector;
   // only the two options that are not a language get translated.
@@ -141,33 +214,19 @@ export function SettingsScreen() {
 
       <section className="settings-group">
         <h2 className="settings-group-label">{t('settings.serviceGroup')}</h2>
-        <div className="segmented">
-          <button
-            type="button"
-            className={`segmented-option${
-              settings.transcriptionService === 'local' ? ' segmented-option--active' : ''
-            }`}
-            aria-pressed={settings.transcriptionService === 'local'}
-            onClick={() => actions.updateSettings({ transcriptionService: 'local' })}
-          >
-            {t('settings.serviceLocal')}
-          </button>
-          <button
-            type="button"
-            className={`segmented-option${
-              settings.transcriptionService === 'elevenlabs' ? ' segmented-option--active' : ''
-            }`}
-            aria-pressed={settings.transcriptionService === 'elevenlabs'}
-            onClick={() => actions.updateSettings({ transcriptionService: 'elevenlabs' })}
-          >
-            ElevenLabs
-          </button>
-        </div>
-        <div className="setting-hint">
-          {settings.transcriptionService === 'local'
-            ? t('settings.serviceLocalHint')
-            : t('settings.serviceElevenLabsHint')}
-        </div>
+        <ServicePickerTabs
+          engines={TRANSCRIPTION_ENGINES}
+          selected={settings.transcriptionService}
+          // Accumulated rather than `Object.fromEntries`, which widens the key
+          // back to `string` and loses the guarantee that every engine has one.
+          hints={TRANSCRIPTION_ENGINES.reduce(
+            (acc, engine) => ({ ...acc, [engine]: t(SERVICE_HINTS[engine]) }),
+            {} as Record<TranscriptionEngine, string>,
+          )}
+          onSelect={(engine) => actions.updateSettings({ transcriptionService: engine })}
+          label={t('settings.serviceGroup')}
+        />
+        <div className="setting-hint">{t('settings.serviceDefaultHint')}</div>
       </section>
 
       <section className="settings-group">
@@ -190,96 +249,76 @@ export function SettingsScreen() {
         <div className="setting-hint">{t('settings.audioLangHint')}</div>
       </section>
 
-      {settings.transcriptionService === 'local' && (
-        <section className="settings-group">
-          <h2 className="settings-group-label">{t('settings.modelGroup')}</h2>
-          <ModelPicker
-            models={models}
-            selectedId={settings.whisperModel}
-            onSelect={(whisperModel) => actions.updateSettings({ whisperModel })}
-            disabled={modelBusy}
-            label={t('settings.modelSelect')}
-          />
-          <div className="setting-row">
-            <div>
-              <div className="setting-name">{t('settings.modelStatus')}</div>
-              <div className="setting-value">{modelValue}</div>
-            </div>
-            {model?.installed ? (
-              <button
-                type="button"
-                className="btn-outline"
-                disabled={modelBusy}
-                onClick={() => {
-                  if (!confirmingDelete) return setConfirmingDelete(true);
-                  setConfirmingDelete(false);
-                  actions.deleteModel(model.id);
-                }}
-              >
-                {confirmingDelete ? t('settings.modelDeleteConfirm') : t('settings.modelDelete')}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn-outline"
-                disabled={modelBusy}
-                onClick={actions.downloadModel}
-              >
-                {modelBusy ? t('settings.modelDownloading') : t('settings.modelDownload')}
-              </button>
-            )}
-          </div>
-          {downloading && progress.percent >= 0 && (
-            <div className="progress-track" role="progressbar" aria-valuenow={progress.percent}>
-              <div className="progress-fill" style={{ width: `${progress.percent}%` }} />
-            </div>
-          )}
-          <div className="setting-hint">{t('settings.modelHint')}</div>
-        </section>
-      )}
-
-      {settings.transcriptionService === 'elevenlabs' && (
-        <section className="settings-group">
-          <h2 className="settings-group-label">{t('settings.elevenLabsGroup')}</h2>
+      {/* Always shown, whatever the default engine is: any downloaded model is
+          an option in the picker before transcribing, so managing them cannot
+          depend on the default being the local one. */}
+      <section className="settings-group">
+        <h2 className="settings-group-label">{t('settings.modelGroup')}</h2>
+        <ModelPicker
+          models={models}
+          selectedId={settings.whisperModel}
+          onSelect={(whisperModel) => actions.updateSettings({ whisperModel })}
+          disabled={modelBusy}
+          label={t('settings.modelSelect')}
+        />
+        <div className="setting-row">
           <div>
-            <div className="setting-name">{t('settings.apiKey')}</div>
-            <div className="api-key-row">
-              <input
-                type="password"
-                className="api-key-input"
-                placeholder="sk_..."
-                value={apiKeyDraft}
-                onChange={(e) => setApiKeyDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') saveApiKey();
-                  if (e.key === 'Escape') setApiKeyDraft(settings.elevenLabsApiKey);
-                }}
-              />
-              <button
-                type="button"
-                className="btn-solid"
-                disabled={!apiKeyDirty}
-                onClick={saveApiKey}
-              >
-                {t('settings.save')}
-              </button>
-            </div>
-            <div className="setting-hint">
-              {apiKeyDirty ? (
-                <span className="setting-dirty">{t('settings.apiKeyDirty')}</span>
-              ) : settings.elevenLabsApiKey ? (
-                <span className="setting-saved">{t('settings.apiKeySaved')}</span>
-              ) : (
-                t('settings.apiKeyMissing')
-              )}{' '}
-              {t('settings.apiKeyGet')}{' '}
-              <a href="https://elevenlabs.io/app/api-keys" target="_blank" rel="noreferrer">
-                elevenlabs.io/app/api-keys
-              </a>
-            </div>
+            <div className="setting-name">{t('settings.modelStatus')}</div>
+            <div className="setting-value">{modelValue}</div>
           </div>
-        </section>
-      )}
+          {model?.installed ? (
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={modelBusy}
+              onClick={() => {
+                if (!confirmingDelete) return setConfirmingDelete(true);
+                setConfirmingDelete(false);
+                actions.deleteModel(model.id);
+              }}
+            >
+              {confirmingDelete ? t('settings.modelDeleteConfirm') : t('settings.modelDelete')}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={modelBusy}
+              onClick={actions.downloadModel}
+            >
+              {modelBusy ? t('settings.modelDownloading') : t('settings.modelDownload')}
+            </button>
+          )}
+        </div>
+        {downloading && progress.percent >= 0 && (
+          <div className="progress-track" role="progressbar" aria-valuenow={progress.percent}>
+            <div className="progress-fill" style={{ width: `${progress.percent}%` }} />
+          </div>
+        )}
+        <div className="setting-hint">{t('settings.modelHint')}</div>
+      </section>
+
+      {/* Both keys are always editable, for the same reason the model section
+          is: either service can be picked for a single transcription without
+          becoming the default. */}
+      <ApiKeySection
+        title={t('settings.elevenLabsGroup')}
+        saved={settings.elevenLabsApiKey}
+        placeholder="sk_..."
+        href="https://elevenlabs.io/app/api-keys"
+        linkText="elevenlabs.io/app/api-keys"
+        onSave={(elevenLabsApiKey) => actions.updateSettings({ elevenLabsApiKey })}
+      />
+
+      <ApiKeySection
+        title={t('settings.deepgramGroup')}
+        saved={settings.deepgramApiKey}
+        placeholder="Token…"
+        href="https://console.deepgram.com/"
+        linkText="console.deepgram.com"
+        onSave={(deepgramApiKey) => actions.updateSettings({ deepgramApiKey })}
+      />
+
 
       <section className="settings-group">
         <h2 className="settings-group-label">{t('settings.formatGroup')}</h2>
