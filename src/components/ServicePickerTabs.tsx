@@ -1,25 +1,28 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useI18n } from '@/i18n';
 import { engineName } from '@/lib/engines';
 import type { TranscriptionEngine } from '@/types';
 
+interface ServiceTabContent {
+  engine: TranscriptionEngine;
+  hint: string;
+  content: ReactNode;
+}
+
 interface ServicePickerTabsProps {
-  /** Readonly so the `TRANSCRIPTION_ENGINES` constant can be passed as it is. */
-  engines: readonly TranscriptionEngine[];
+  tabs: ServiceTabContent[];
   selected: TranscriptionEngine;
-  hints: Record<TranscriptionEngine, string>;
   onSelect: (engine: TranscriptionEngine) => void;
   label: string;
 }
 
 /**
- * Service picker for Settings screen using tabs. Shows each transcription
- * service as a separate tab with its hint text visible.
+ * Service picker for Settings screen using tabs. Each tab contains its
+ * service description, configuration fields, and actions.
  */
 export function ServicePickerTabs({
-  engines,
+  tabs,
   selected,
-  hints,
   onSelect,
   label,
 }: ServicePickerTabsProps) {
@@ -35,36 +38,37 @@ export function ServicePickerTabs({
       <div className="service-picker-label">{label}</div>
 
       <div className="service-tabs" role="tablist">
-        {engines.map((engine) => (
+        {tabs.map((tab) => (
           <button
-            key={engine}
+            key={tab.engine}
             type="button"
             role="tab"
-            aria-selected={engine === activeTab}
-            aria-controls={`service-panel-${engine}`}
-            id={`service-tab-${engine}`}
-            className={`service-tab${engine === activeTab ? ' service-tab--active' : ''}`}
+            aria-selected={tab.engine === activeTab}
+            aria-controls={`service-panel-${tab.engine}`}
+            id={`service-tab-${tab.engine}`}
+            className={`service-tab${tab.engine === activeTab ? ' service-tab--active' : ''}`}
             onClick={() => {
-              setActiveTab(engine);
-              onSelect(engine);
+              setActiveTab(tab.engine);
+              onSelect(tab.engine);
             }}
           >
-            {getTabLabel(engine)}
+            {getTabLabel(tab.engine)}
           </button>
         ))}
       </div>
 
       <div className="service-panels">
-        {engines.map((engine) => (
+        {tabs.map((tab) => (
           <div
-            key={engine}
+            key={tab.engine}
             role="tabpanel"
-            id={`service-panel-${engine}`}
-            aria-labelledby={`service-tab-${engine}`}
-            className={`service-panel${engine === activeTab ? ' service-panel--active' : ''}`}
-            hidden={engine !== activeTab}
+            id={`service-panel-${tab.engine}`}
+            aria-labelledby={`service-tab-${tab.engine}`}
+            className={`service-panel${tab.engine === activeTab ? ' service-panel--active' : ''}`}
+            hidden={tab.engine !== activeTab}
           >
-            <div className="service-panel-hint">{hints[engine]}</div>
+            <div className="service-panel-hint">{tab.hint}</div>
+            <div className="service-panel-content">{tab.content}</div>
           </div>
         ))}
       </div>

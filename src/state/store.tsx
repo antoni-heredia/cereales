@@ -12,6 +12,7 @@ import { services, updateServices } from '@/services';
 import { DEFAULT_SETTINGS } from '@/services/mock';
 import { resolveAudioLanguage, resolveLanguage, useI18n } from '@/i18n';
 import { describeError } from '@/lib/errors';
+import { engineStamp } from '@/lib/engines';
 import { nearestEntryIndex } from '@/lib/format';
 import { transcriptRelPath } from '@/lib/serialize';
 import { sourceLabel } from '@/lib/sources';
@@ -26,6 +27,7 @@ import type {
   Settings,
   Transcript,
   TranscriptFormat,
+  TranscriptionChoice,
 } from '@/types';
 
 /** A capture waiting to be annotated. */
@@ -91,7 +93,8 @@ interface AppActions {
   stopRecording: () => void;
   resetRecorder: () => void;
   viewLatestTranscript: () => void;
-  transcribeRecording: (recordingId: string) => void;
+  /** `choice` is picked next to the button, defaulting to the settings engine. */
+  transcribeRecording: (recordingId: string, choice: TranscriptionChoice) => void;
   deleteRecording: (recordingId: string) => void;
   renameRecording: (recordingId: string, newTitle: string) => void;
   updateRecordingTags: (recordingId: string, tags: string[]) => void;
@@ -235,13 +238,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // must not prevent recording, so it never surfaces an error here. It reruns
   // when the selection changes, which is what keeps the settings screen honest
   // after picking another model.
+  //
+  // It always asks the local engine, whatever the default engine happens to be:
+  // the catalogue is what says which models are downloaded, and that is what
+  // decides the options offered before transcribing.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         const [status, list] = await Promise.all([
-          services.transcription.modelStatus(),
-          services.transcription.listModels(),
+          services.localTranscription.modelStatus(),
+          services.localTranscription.listModels(),
         ]);
         if (cancelled) return;
         setModel(status);
@@ -253,15 +260,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [settings.transcriptionService, settings.whisperModel, settings.elevenLabsApiKey]);
+  }, [settings.whisperModel]);
 
-  // Model download and transcription progress. It resubscribes when the engine
-  // changes: `services` is replaced wholesale and the previous subscription
-  // would point at the old object.
-  useEffect(
-    () => services.transcription.onProgress(setProgress),
-    [settings.transcriptionService, settings.whisperModel, settings.elevenLabsApiKey],
-  );
+  // Download progress. Transcription progress is subscribed to per run instead,
+  // by `transcribeRecording`, because the engine doing the work is only known
+  // then. It resubscribes when the model changes: `services` is replaced
+  // wholesale and the previous subscription would point at the old object.
+  useEffect(() => services.localTranscription.onProgress(setProgress), [settings.whisperModel]);
 
   const startRecording = useCallback(() => {
     if (phase === 'recording' || !selectedSourceId) return;
@@ -542,7 +547,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [persistSettings, settings]);
 
   const transcribeRecording = useCallback(
-    (recordingId: string) => {
+    (recordingId: string, choice: TranscriptionChoice) => {
       const recording = recordings.find((r) => r.id === recordingId);
       if (!recording?.audioPath) return;
 
@@ -550,24 +555,32 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setProgress(null);
       setError(null);
 
+      const service = services.transcriptionFor(choice);
+      // Only this run's engine can report its own progress, and it is only
+      // known now: the subscription lives exactly as long as the work does.
+      const offProgress = service.onProgress(setProgress);
+
       void (async () => {
         try {
           // Two different languages: what was spoken, and what the reader
           // understands. `lang` alone would tell whisper the meeting was held
           // in whatever the interface happens to be set to.
-          const entries = await services.transcription.transcribe(recording.audioPath ?? '', {
+          const entries = await service.transcribe(recording.audioPath ?? '', {
             audio: resolveAudioLanguage(settings.audioLanguage, lang),
             ui: lang,
           });
           const currentNotes = transcript?.notes ?? [];
           const nextTranscript: Transcript = { recordingId, entries, notes: currentNotes };
+          // Stamped before the note is written, not after: the engine is part
+          // of what `serializeTranscript` puts in the frontmatter.
+          const stamped: Recording = { ...recording, engine: engineStamp(choice) };
           const transcriptPath = await services.storage.writeTranscript(
-            recording,
+            stamped,
             nextTranscript,
             settings.transcriptFormat,
             lang,
           );
-          const saved: Recording = { ...recording, transcriptPath };
+          const saved: Recording = { ...stamped, transcriptPath };
           await services.storage.saveRecording(saved);
 
           setRecordings((prev) => [saved, ...prev.filter((r) => r.id !== saved.id)]);
@@ -575,6 +588,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         } catch (err) {
           setError(describeError(err, lang));
         } finally {
+          offProgress();
           setProgress(null);
           setTranscribingRecordingId(null);
         }
@@ -654,8 +668,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setError(null);
     void (async () => {
       try {
-        setModel(await services.transcription.downloadModel());
-        setModels(await services.transcription.listModels());
+        setModel(await services.localTranscription.downloadModel());
+        setModels(await services.localTranscription.listModels());
       } catch (err) {
         setError(describeError(err, lang));
       } finally {
@@ -676,7 +690,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setError(null);
       void (async () => {
         try {
-          const list = await services.transcription.deleteModel(id);
+          const list = await services.localTranscription.deleteModel(id);
           setModels(list);
           setModel((prev) => list.find((m) => m.id === prev?.id) ?? prev);
         } catch (err) {

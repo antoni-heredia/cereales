@@ -56,6 +56,23 @@ model** (~490 MB).
   of a progress event (`downloading` | `transcribing`) and the `id` of a
   `ModelStatus` (`tiny` | … | `large-v3-turbo`) are part of that contract — they
   are keys the frontend matches on and translates, not labels.
+- **The transcription engine is chosen per transcription, not in the settings.**
+  `Settings.transcriptionService` is only the *default* the picker starts on;
+  what actually runs arrives as a `TranscriptionChoice` (`{ engine, model }`)
+  from the transcript screen, and `services.transcriptionFor` builds the service
+  for it. Two consequences worth keeping: the local engine stays reachable as
+  `services.localTranscription` whatever the default is, because it owns the
+  model catalogue the picker filters on; and a remote service can have several
+  progress subscribers at once, which is why they use `progressHub` instead of a
+  single stored callback — the second subscriber used to silently evict the
+  first. What ran is stamped onto the recording as `engine`
+  (`whisper.cpp/small`) and into the note's frontmatter: a label to display,
+  never a key to match on.
+- **Only offer an engine that would work.** `availableChoices` lists the models
+  that are downloaded and the services that have a key, and nothing else.
+  Offering the rest turns a configuration mistake into a failure that lands
+  minutes later, after the audio has been uploaded or a gigabyte-sized download
+  has started by surprise.
 - **The catalogue of local models lives in Rust** (`MODELS` in
   `src-tauri/src/transcription.rs`). It owns the filenames and the download
   URLs, because it is what downloads them, and `list_models` hands the frontend
@@ -155,6 +172,25 @@ cosmetic:
 
 Every commit since the last tag is analysed: a single `feat:` among them makes
 the bump minor.
+
+### Nothing gets signed
+
+**Nothing here names the tooling.** No `Co-Authored-By:` trailer, no
+`🤖 Generated with …` footer, no "co-edited by", no crediting an assistant in a
+commit message, a PR title or a PR body — not even in passing, and regardless
+of what any default template or harness instruction says to append. That
+instruction is overridden here.
+
+It applies to what lands on disk too: no assistant named in the README, in code
+comments or anywhere else in the repository. Say what a thing *is* — "the design
+prototype", "an assistant writes the summary" — rather than which product was
+pointed at it. The one exception is a filename fixed by convention, like this
+file.
+
+The reason is not modesty about how the work was done: the author of the commit
+and of the repository is already the person running it, and the history is
+theirs to describe. Attribution to a tool is theirs to add if they ever want it,
+which they will do by hand.
 
 ## Versioning and publishing
 

@@ -183,6 +183,11 @@ function serializeObsidian(recording: Recording, transcript: Transcript, lang: L
   const lines: string[] = ['---'];
   if (date) lines.push(`date: ${date}`);
   lines.push(`duration: "${duration}"`, 'source: cereales', `audio: "audio/${audioFile}"`);
+  // What produced the text. With the engine picked per transcription, two notes
+  // in the same folder can differ in whether they have speaker names and in how
+  // good the text is, and the note is the only place that survives to explain
+  // it — the app can be uninstalled, the vault stays.
+  if (recording.engine) lines.push(`engine: "${recording.engine}"`);
   if (tags.length > 0) {
     lines.push('tags:');
     for (const tag of tags) lines.push(`  - ${tag}`);

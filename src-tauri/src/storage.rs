@@ -138,6 +138,7 @@ fn default_settings() -> Settings {
         // Empty means "never chosen": the interface language decides.
         audio_language: String::new(),
         eleven_labs_api_key: String::new(),
+        deepgram_api_key: String::new(),
     }
 }
 
@@ -224,6 +225,7 @@ fn collect_recordings(dir: &Path, out: &mut Vec<Recording>, seen: &mut HashSet<S
                 audio_path: None,
                 transcript_path: None,
                 tags: None,
+                engine: None,
             });
         // The right path is the file we just found; the stored one goes stale
         // as soon as the folder moves.
@@ -757,6 +759,7 @@ mod tests {
             audio_path: Some(audio.join(format!("{stem}.wav")).to_string_lossy().into_owned()),
             transcript_path: Some(note.to_string_lossy().into_owned()),
             tags: None,
+            engine: None,
         };
         fs::write(
             audio.join(format!("{stem}.json")),

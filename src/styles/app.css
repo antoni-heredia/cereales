@@ -476,6 +476,13 @@
   color: var(--text-muted);
 }
 
+.service-panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
