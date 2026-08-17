@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { EnginePicker } from '@/components/EnginePicker';
 import { ScreenshotEditor } from '@/components/ScreenshotEditor';
 import { ScreenshotViewer } from '@/components/ScreenshotViewer';
 import { TagInput } from '@/components/TagInput';
 import { useI18n } from '@/i18n';
+import { availableChoices, choiceId, defaultChoice } from '@/lib/engines';
 import { formatRecordingDate, formatTime, nearestEntryIndex } from '@/lib/format';
 import { useApp } from '@/state/store';
+import type { TranscriptionChoice } from '@/types';
 
 export function TranscriptScreen() {
   const {
@@ -14,6 +17,8 @@ export function TranscriptScreen() {
     activeEntryIndex,
     progress,
     transcribingRecordingId,
+    settings,
+    models,
     shotDraft,
     shotView,
     shotBusy,
@@ -26,6 +31,19 @@ export function TranscriptScreen() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [pickedChoice, setPickedChoice] = useState<TranscriptionChoice | null>(null);
+
+  const choices = useMemo(() => availableChoices(settings, models), [settings, models]);
+  const proposed = useMemo(() => defaultChoice(settings, choices), [settings, choices]);
+  // The pick is honoured only while it is still on offer. The catalogue arrives
+  // after the first render, and a model can be deleted or a key removed from
+  // the settings screen between opening this one and pressing the button;
+  // deriving instead of storing means none of that leaves a stale selection
+  // sitting in the dropdown.
+  const choice =
+    pickedChoice && choices.some((c) => choiceId(c) === choiceId(pickedChoice))
+      ? pickedChoice
+      : proposed;
 
   // Clicking a note scrolls the matching transcript entry into view.
   useEffect(() => {
@@ -109,6 +127,10 @@ export function TranscriptScreen() {
           )}
           <div className="screen-sub">
             {formatRecordingDate(recording.startedAt, lang)} · {formatTime(recording.durationSec)}
+            {/* What transcribed it, once something has. Two recordings in the
+                same folder can now disagree about whether they have speaker
+                names, and this is what explains why. */}
+            {recording.engine && ` · ${recording.engine}`}
           </div>
         </div>
         <div className="transcript-actions">
@@ -171,13 +193,28 @@ export function TranscriptScreen() {
       {entries.length === 0 && !isTranscribing && (
         <div className="transcribe-card">
           <div className="transcribe-label">{t('transcript.missing')}</div>
-          <button
-            type="button"
-            className="btn-solid"
-            onClick={() => actions.transcribeRecording(recording.id)}
-          >
-            {t('transcript.transcribe')}
-          </button>
+          {choice ? (
+            <>
+              <EnginePicker
+                choices={choices}
+                selected={choice}
+                onSelect={setPickedChoice}
+                label={t('transcript.engine')}
+              />
+              <button
+                type="button"
+                className="btn-solid"
+                onClick={() => actions.transcribeRecording(recording.id, choice)}
+              >
+                {t('transcript.transcribe')}
+              </button>
+            </>
+          ) : (
+            // Nothing is ready: no model downloaded and no key configured. The
+            // button is not disabled but absent, because there is a thing to go
+            // and do and a greyed-out control does not say what it is.
+            <div className="setting-hint">{t('transcript.noEngine')}</div>
+          )}
         </div>
       )}
 

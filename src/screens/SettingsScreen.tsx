@@ -12,7 +12,7 @@ import {
 import { formatBytes } from '@/lib/format';
 import { sourceLabel } from '@/lib/sources';
 import { useApp } from '@/state/store';
-import { TRANSCRIPT_FORMATS, TRANSCRIPTION_ENGINES, type TranscriptionEngine } from '@/types';
+import { TRANSCRIPT_FORMATS, type TranscriptionEngine } from '@/types';
 
 /**
  * Renders a message whose `{placeholders}` become `<code>` elements. The
@@ -215,14 +215,98 @@ export function SettingsScreen() {
       <section className="settings-group">
         <h2 className="settings-group-label">{t('settings.serviceGroup')}</h2>
         <ServicePickerTabs
-          engines={TRANSCRIPTION_ENGINES}
+          tabs={[
+            {
+              engine: 'local',
+              hint: t(SERVICE_HINTS.local),
+              content: (
+                <>
+                  <div>
+                    <h3 className="setting-hint" style={{ marginBottom: '12px' }}>
+                      {t('settings.modelGroup')}
+                    </h3>
+                    <ModelPicker
+                      models={models}
+                      selectedId={settings.whisperModel}
+                      onSelect={(whisperModel) => actions.updateSettings({ whisperModel })}
+                      disabled={modelBusy}
+                      label={t('settings.modelSelect')}
+                    />
+                    <div className="setting-row">
+                      <div>
+                        <div className="setting-name">{t('settings.modelStatus')}</div>
+                        <div className="setting-value">{modelValue}</div>
+                      </div>
+                      {model?.installed ? (
+                        <button
+                          type="button"
+                          className="btn-outline"
+                          disabled={modelBusy}
+                          onClick={() => {
+                            if (!confirmingDelete) return setConfirmingDelete(true);
+                            setConfirmingDelete(false);
+                            actions.deleteModel(model.id);
+                          }}
+                        >
+                          {confirmingDelete
+                            ? t('settings.modelDeleteConfirm')
+                            : t('settings.modelDelete')}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn-outline"
+                          disabled={modelBusy}
+                          onClick={actions.downloadModel}
+                        >
+                          {modelBusy ? t('settings.modelDownloading') : t('settings.modelDownload')}
+                        </button>
+                      )}
+                    </div>
+                    {downloading && progress.percent >= 0 && (
+                      <div
+                        className="progress-track"
+                        role="progressbar"
+                        aria-valuenow={progress.percent}
+                      >
+                        <div className="progress-fill" style={{ width: `${progress.percent}%` }} />
+                      </div>
+                    )}
+                    <div className="setting-hint">{t('settings.modelHint')}</div>
+                  </div>
+                </>
+              ),
+            },
+            {
+              engine: 'elevenlabs',
+              hint: t(SERVICE_HINTS.elevenlabs),
+              content: (
+                <ApiKeySection
+                  title={t('settings.elevenLabsGroup')}
+                  saved={settings.elevenLabsApiKey}
+                  placeholder="sk_..."
+                  href="https://elevenlabs.io/app/api-keys"
+                  linkText="elevenlabs.io/app/api-keys"
+                  onSave={(elevenLabsApiKey) => actions.updateSettings({ elevenLabsApiKey })}
+                />
+              ),
+            },
+            {
+              engine: 'deepgram',
+              hint: t(SERVICE_HINTS.deepgram),
+              content: (
+                <ApiKeySection
+                  title={t('settings.deepgramGroup')}
+                  saved={settings.deepgramApiKey}
+                  placeholder="Token…"
+                  href="https://console.deepgram.com/"
+                  linkText="console.deepgram.com"
+                  onSave={(deepgramApiKey) => actions.updateSettings({ deepgramApiKey })}
+                />
+              ),
+            },
+          ]}
           selected={settings.transcriptionService}
-          // Accumulated rather than `Object.fromEntries`, which widens the key
-          // back to `string` and loses the guarantee that every engine has one.
-          hints={TRANSCRIPTION_ENGINES.reduce(
-            (acc, engine) => ({ ...acc, [engine]: t(SERVICE_HINTS[engine]) }),
-            {} as Record<TranscriptionEngine, string>,
-          )}
           onSelect={(engine) => actions.updateSettings({ transcriptionService: engine })}
           label={t('settings.serviceGroup')}
         />
@@ -248,76 +332,6 @@ export function SettingsScreen() {
         </div>
         <div className="setting-hint">{t('settings.audioLangHint')}</div>
       </section>
-
-      {/* Always shown, whatever the default engine is: any downloaded model is
-          an option in the picker before transcribing, so managing them cannot
-          depend on the default being the local one. */}
-      <section className="settings-group">
-        <h2 className="settings-group-label">{t('settings.modelGroup')}</h2>
-        <ModelPicker
-          models={models}
-          selectedId={settings.whisperModel}
-          onSelect={(whisperModel) => actions.updateSettings({ whisperModel })}
-          disabled={modelBusy}
-          label={t('settings.modelSelect')}
-        />
-        <div className="setting-row">
-          <div>
-            <div className="setting-name">{t('settings.modelStatus')}</div>
-            <div className="setting-value">{modelValue}</div>
-          </div>
-          {model?.installed ? (
-            <button
-              type="button"
-              className="btn-outline"
-              disabled={modelBusy}
-              onClick={() => {
-                if (!confirmingDelete) return setConfirmingDelete(true);
-                setConfirmingDelete(false);
-                actions.deleteModel(model.id);
-              }}
-            >
-              {confirmingDelete ? t('settings.modelDeleteConfirm') : t('settings.modelDelete')}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn-outline"
-              disabled={modelBusy}
-              onClick={actions.downloadModel}
-            >
-              {modelBusy ? t('settings.modelDownloading') : t('settings.modelDownload')}
-            </button>
-          )}
-        </div>
-        {downloading && progress.percent >= 0 && (
-          <div className="progress-track" role="progressbar" aria-valuenow={progress.percent}>
-            <div className="progress-fill" style={{ width: `${progress.percent}%` }} />
-          </div>
-        )}
-        <div className="setting-hint">{t('settings.modelHint')}</div>
-      </section>
-
-      {/* Both keys are always editable, for the same reason the model section
-          is: either service can be picked for a single transcription without
-          becoming the default. */}
-      <ApiKeySection
-        title={t('settings.elevenLabsGroup')}
-        saved={settings.elevenLabsApiKey}
-        placeholder="sk_..."
-        href="https://elevenlabs.io/app/api-keys"
-        linkText="elevenlabs.io/app/api-keys"
-        onSave={(elevenLabsApiKey) => actions.updateSettings({ elevenLabsApiKey })}
-      />
-
-      <ApiKeySection
-        title={t('settings.deepgramGroup')}
-        saved={settings.deepgramApiKey}
-        placeholder="Token…"
-        href="https://console.deepgram.com/"
-        linkText="console.deepgram.com"
-        onSave={(deepgramApiKey) => actions.updateSettings({ deepgramApiKey })}
-      />
 
 
       <section className="settings-group">

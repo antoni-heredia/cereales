@@ -33,6 +33,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // Empty on purpose: the interface language decides until the user picks one.
   audioLanguage: '',
   elevenLabsApiKey: '',
+  deepgramApiKey: '',
 };
 
 /** Mirror of `storage_root` in Rust, so the mock shows the same path. */

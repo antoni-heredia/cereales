@@ -5,7 +5,7 @@ specific application, transcribes it **locally**, and lets you take timestamped
 notes that link back to the exact point in the transcript.
 
 The interface is available in **English and Spanish**, and is ported from the
-Claude Design prototype (`cereales.dc.html`).
+design prototype in `cereales.dc.html`.
 
 ![Recording, with the notes taken so far](docs/screenshots/record.png)
 
@@ -31,9 +31,10 @@ somebody else's server.
 cereales copies that workflow and drops that part. It is open source, it runs on
 your machine and it transcribes locally with whisper.cpp: by default the audio
 never leaves the computer and there is no account, no key and no subscription.
-Anyone who prefers better quality and wants to know who spoke can pick ElevenLabs
-Scribe in Settings, but that is an explicit, deliberate decision rather than what
-happens by default.
+Anyone who prefers better quality and wants to know who spoke can send a
+recording to ElevenLabs Scribe or Deepgram instead, but that is an explicit,
+deliberate decision taken one meeting at a time rather than what happens by
+default.
 
 ### What this early version is
 
@@ -61,7 +62,9 @@ or an Obsidian note — but it is an early version and it shows:
 - **Transcription**: whisper.cpp through `whisper-rs`, running on your CPU. The
   audio never leaves the machine. The model is picked in the settings — from
   `tiny` to `large-v3-turbo`, trading speed for accuracy — and several can be
-  kept on disk at once.
+  kept on disk at once. ElevenLabs Scribe and Deepgram are there as
+  alternatives, chosen per recording; see [Choosing an
+  engine](#choosing-an-engine).
 - **Storage**: there is a single folder to choose, the Obsidian vault. Inside
   `transcripts/` the audio goes to `audio/` and the notes are grouped by year.
   With no vault linked, `Documents/cereales` is used with that same structure.
@@ -91,6 +94,31 @@ Every user-visible string lives in `src/i18n/`. `en.ts` is the source of truth
 for the keys and `es.ts` is typed against it, so a key added without a Spanish
 translation fails `npm run typecheck` rather than quietly rendering English.
 
+### Choosing an engine
+
+Three things can transcribe: whisper.cpp on your machine, ElevenLabs Scribe and
+Deepgram. The choice is made **per recording**, on the transcript screen, right
+before pressing the button — the setting in Settings only decides which one is
+proposed.
+
+It is per recording because it is not one decision made once. A quick internal
+sync can go through `small` and be over in a minute; the hour-long call you will
+have to quote from is worth `large-v3-turbo`, or worth sending away to something
+that separates the speakers. Making that a global mode would mean changing a
+setting twice for every meeting that differs from the last, and in practice
+means never changing it.
+
+The dropdown lists only what would actually work right now: one entry per model
+you have downloaded, plus each service whose API key is filled in. Something
+that cannot run is not offered, because the failure would otherwise arrive
+minutes later, after the audio had already been uploaded. Each entry says where
+the audio goes — the one fact worth repeating at the moment of choosing.
+
+Whichever ran is recorded with the transcript and written into the note as
+`engine: "whisper.cpp/small"`. Two notes side by side in the vault can now
+disagree about whether they have speaker names and about how good the text is,
+and the note is the only thing that outlives the app to explain why.
+
 ### Built for Obsidian
 
 The default format is an Obsidian note: frontmatter with the date, the duration
@@ -117,11 +145,11 @@ decisions and who owes what, and file the answer next to it.
 
 ![A summary note beside the transcript it came from](docs/screenshots/obsidian-summary.png)
 
-That note is written by Claude, not by cereales, and it stays a separate file on
-purpose. A summary is a judgement about a meeting the app did not attend, so a
-bad one has to be throwable without taking the recording, the transcript or the
-notes with it — and the `[[…]]` link back means the literal version is always
-one click away when the summary is wrong.
+That note is not written by cereales, and it stays a separate file on purpose. A
+summary is a judgement about a meeting the app did not attend, so a bad one has
+to be throwable without taking the recording, the transcript or the notes with
+it — and the `[[…]]` link back means the literal version is always one click
+away when the summary is wrong.
 
 ### Name migration
 
@@ -155,9 +183,10 @@ loopback* needs Windows 10 2004 (build 19041) or later.
   tree. What you will see in the dropdown is the whole application ("chrome",
   "Zoom"), which is why the "Browser tabs" group no longer exists.
 - **whisper.cpp does not tell speakers apart.** Transcript lines come out with
-  no name; the UI hides that line rather than inventing a "Speaker 1". Real
-  diarization would need a different backend (Deepgram, AssemblyAI), which means
-  uploading the audio to a third party.
+  no name; the UI hides that line rather than inventing a "Speaker 1". Getting
+  names needs one of the remote engines, which means uploading the audio to a
+  third party — that is the trade, and it is why the choice is offered per
+  recording rather than set once.
 - **whisper invents labels during silences** ("[MUSIC]", "[BLANK_AUDIO]"). They
   are dropped when the segments are read: besides not being speech, they
   competed for the jump from a note and could steal the spot from the real

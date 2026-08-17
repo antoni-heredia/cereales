@@ -28,6 +28,12 @@ pub struct Recording {
     pub transcript_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
+    /// What transcribed it, as `engine/model` — `whisper.cpp/small`,
+    /// `deepgram/nova-3`. Written by the frontend, which is where the engine is
+    /// chosen; Rust only carries it. Absent on recordings transcribed before
+    /// this existed, and on those not transcribed yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -97,7 +103,9 @@ pub struct Settings {
     /// "TXT" | "Markdown" | "SRT" | "Obsidian"
     #[serde(default = "default_transcript_format")]
     pub transcript_format: String,
-    /// "local" | "elevenlabs"
+    /// "local" | "elevenlabs" | "deepgram". Only the *default*: the engine is
+    /// chosen per transcription on the transcript screen, and picking another
+    /// one there does not write to this.
     #[serde(default = "default_transcription_service")]
     pub transcription_service: String,
     /// Language announced to the transcription engine: "es" | "en" | "auto", or
@@ -114,6 +122,10 @@ pub struct Settings {
     /// the rest of the configuration.
     #[serde(default)]
     pub eleven_labs_api_key: String,
+    /// As above. Both keys are kept whichever engine is the default, because
+    /// either can be picked for a single transcription.
+    #[serde(default)]
+    pub deepgram_api_key: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -141,7 +153,8 @@ mod tests {
             "transcriptionService": "elevenlabs",
             "whisperModel": "large-v3-turbo",
             "audioLanguage": "auto",
-            "elevenLabsApiKey": "sk_secret"
+            "elevenLabsApiKey": "sk_secret",
+            "deepgramApiKey": "dg_secret"
         }"#;
 
         let parsed: Settings = serde_json::from_str(json).expect("should deserialize");
@@ -150,6 +163,7 @@ mod tests {
         assert_eq!(parsed.whisper_model, "large-v3-turbo");
         assert_eq!(parsed.audio_language, "auto");
         assert_eq!(parsed.eleven_labs_api_key, "sk_secret");
+        assert_eq!(parsed.deepgram_api_key, "dg_secret");
         assert_eq!(
             parsed.obsidian_vault_path,
             Some("G:\\My Drive\\obsidian\\Personal".to_string())
@@ -162,6 +176,7 @@ mod tests {
             "got: {back}"
         );
         assert!(back.contains("\"elevenLabsApiKey\":\"sk_secret\""), "got: {back}");
+        assert!(back.contains("\"deepgramApiKey\":\"dg_secret\""), "got: {back}");
         assert!(
             back.contains("\"whisperModel\":\"large-v3-turbo\""),
             "got: {back}"
@@ -185,6 +200,7 @@ mod tests {
         let parsed: Settings = serde_json::from_str(json).expect("the old format must load");
         assert_eq!(parsed.transcription_service, "local");
         assert_eq!(parsed.eleven_labs_api_key, "");
+        assert_eq!(parsed.deepgram_api_key, "");
         // The model those installs already downloaded: no forced re-download.
         assert_eq!(parsed.whisper_model, "small");
         // Empty, not "auto": the interface language keeps deciding, which is how

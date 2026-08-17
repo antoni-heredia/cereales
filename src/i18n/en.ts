@@ -86,6 +86,12 @@ export const en = {
   'transcript.tagsHint': 'A comma closes the tag. Tags go into the Obsidian note frontmatter.',
   'transcript.missing': 'No transcript available',
   'transcript.transcribe': 'Transcribe',
+  'transcript.engine': 'Transcribe with',
+  'transcript.noEngine':
+    'Nothing can transcribe yet. Download a model, or add an API key, in Settings.',
+  'engine.local': 'Local',
+  'engine.onDevice': 'on this machine',
+  'engine.uploads': 'uploads the audio to {service}',
   'transcript.working': 'Transcribing audio…',
   'transcript.workingPercent': 'Transcribing audio… {percent}%',
   'transcript.seek': 'Jump to this point in the audio',
@@ -120,6 +126,10 @@ export const en = {
     'Transcription runs on your machine: the audio never leaves the computer.',
   'settings.serviceElevenLabsHint':
     'Uses the ElevenLabs API to transcribe. Requires a valid API key.',
+  'settings.serviceDeepgramHint':
+    'Uses the Deepgram API to transcribe. Requires a valid API key.',
+  'settings.serviceDefaultHint':
+    'This is only what gets proposed: the engine can be changed for a single recording before transcribing it.',
   'settings.audioLangGroup': 'Language spoken in the recordings',
   'settings.audioLangInterface': 'Same as the interface',
   'settings.audioLangAuto': 'Detect',
@@ -144,6 +154,7 @@ export const en = {
   'model.medium': 'Medium — more accurate, noticeably slower',
   'model.large-v3-turbo': 'Large v3 Turbo — the most accurate, needs a capable machine',
   'settings.elevenLabsGroup': 'ElevenLabs configuration',
+  'settings.deepgramGroup': 'Deepgram configuration',
   'settings.apiKey': 'API key',
   'settings.save': 'Save',
   'settings.apiKeyDirty': 'Unsaved · Enter to save',
@@ -221,7 +232,11 @@ export const en = {
 
   'err.elevenlabs.noKey': 'The ElevenLabs API key is missing. Add it in Settings.',
   'err.elevenlabs.http': 'ElevenLabs replied with {status}: {detail}',
-  'err.elevenlabs.readAudio': 'Could not read the audio file ({status}): {path}',
+  'err.deepgram.noKey': 'The Deepgram API key is missing. Add it in Settings.',
+  'err.deepgram.http': 'Deepgram replied with {status}: {detail}',
+  // Reading the recorded WAV has nothing to do with which service was picked,
+  // so both remote engines share the one message.
+  'err.remote.readAudio': 'Could not read the audio file ({status}): {path}',
 } as const;
 
 export type MessageKey = keyof typeof en;

@@ -9,6 +9,7 @@ import type {
   Transcript,
   TranscriptEntry,
   TranscriptFormat,
+  TranscriptionChoice,
 } from '@/types';
 
 export interface StopResult {
@@ -141,8 +142,20 @@ export interface StorageService {
 
 export interface Services {
   audio: AudioService;
-  transcription: TranscriptionService;
   storage: StorageService;
+  /**
+   * The local whisper.cpp engine, built with the model chosen in the settings.
+   * It is here on its own because it owns the model catalogue: downloading and
+   * deleting models has to keep working while the default engine is a remote
+   * one, which it did not have to when the engine was a global mode.
+   */
+  localTranscription: TranscriptionService;
+  /**
+   * The service for one transcription. Built per call rather than held, since
+   * the engine — and, for the local one, the model — is chosen just before
+   * transcribing rather than in the settings.
+   */
+  transcriptionFor(choice: TranscriptionChoice): TranscriptionService;
   /** Which parts are backed by the real native implementation. */
   capabilities: {
     audio: boolean;

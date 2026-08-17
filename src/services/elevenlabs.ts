@@ -5,21 +5,21 @@
  * exchange there is no half-gigabyte model to download and no CPU time to pay.
  * And unlike whisper.cpp it does diarize, so lines can carry a speaker.
  */
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { translate, type Language } from '@/i18n';
 import type { ModelStatus, NativeProgress, TranscriptEntry } from '@/types';
+import { progressHub, readAudioFile } from './remote';
 import type { TranscribeLanguages, TranscriptionService } from './types';
 
 const ENDPOINT = 'https://api.elevenlabs.io/v1/speech-to-text';
 /** Scribe model. `model_id` is mandatory: without it the API answers 422. */
-const MODEL_ID = 'scribe_v1';
+export const SCRIBE_MODEL = 'scribe_v1';
 
 /** ISO 639-3 codes, which is what Scribe's `language_code` expects. */
 const LANGUAGE_CODES: Record<Language, string> = { en: 'eng', es: 'spa' };
 
 /** The remote engine dressed as a `ModelStatus`: a key is all it takes to be ready. */
 const scribe = (apiKey: string): ModelStatus => ({
-  id: MODEL_ID,
+  id: SCRIBE_MODEL,
   installed: !!apiKey,
   name: 'ElevenLabs Scribe',
   bytes: 0,
@@ -48,8 +48,7 @@ const MAX_SEGMENT_SEC = 15;
 const MAX_SEGMENT_CHARS = 220;
 
 export const elevenLabsTranscription = (apiKey: string): TranscriptionService => {
-  let onProgressCb: ((progress: NativeProgress) => void) | null = null;
-  const emit = (percent: number, stage: string) => onProgressCb?.({ percent, stage });
+  const progress = progressHub();
 
   return {
     async transcribe(audioPath: string, lang: TranscribeLanguages): Promise<TranscriptEntry[]> {
@@ -57,20 +56,20 @@ export const elevenLabsTranscription = (apiKey: string): TranscriptionService =>
         throw new Error('err.elevenlabs.noKey');
       }
 
-      emit(0, 'transcribing');
+      progress.emit(0, 'transcribing');
       const audio = await readAudioFile(audioPath, lang.ui);
 
       const form = new FormData();
       // The filename matters: the API uses it to infer the container.
       form.append('file', new Blob([audio], { type: 'audio/wav' }), 'recording.wav');
-      form.append('model_id', MODEL_ID);
+      form.append('model_id', SCRIBE_MODEL);
       // Omitted entirely on `auto`: Scribe detects the language when the field
       // is absent, and there is no code that means "detect it".
       if (lang.audio !== 'auto') form.append('language_code', LANGUAGE_CODES[lang.audio]);
       form.append('diarize', 'true');
       form.append('timestamps_granularity', 'word');
 
-      emit(30, 'transcribing');
+      progress.emit(30, 'transcribing');
       const response = await fetch(ENDPOINT, {
         method: 'POST',
         headers: { 'xi-api-key': apiKey },
@@ -89,9 +88,9 @@ export const elevenLabsTranscription = (apiKey: string): TranscriptionService =>
         );
       }
 
-      emit(80, 'transcribing');
+      progress.emit(80, 'transcribing');
       const result = (await response.json()) as ScribeResponse;
-      emit(100, 'transcribing');
+      progress.emit(100, 'transcribing');
 
       // The interface language, not the audio one: "Speaker 1" is a label the
       // reader sees, not something that was spoken.
@@ -107,8 +106,8 @@ export const elevenLabsTranscription = (apiKey: string): TranscriptionService =>
       return scribe(apiKey);
     },
 
-    // No local catalogue to manage: the settings screen hides the model section
-    // entirely while this engine is selected.
+    // No local catalogue to manage. The settings screen gets the catalogue from
+    // the local engine, which is always around now.
     async listModels(): Promise<ModelStatus[]> {
       return [];
     },
@@ -117,11 +116,8 @@ export const elevenLabsTranscription = (apiKey: string): TranscriptionService =>
       return [];
     },
 
-    onProgress(cb) {
-      onProgressCb = cb;
-      return () => {
-        onProgressCb = null;
-      };
+    onProgress(cb: (progress: NativeProgress) => void) {
+      return progress.onProgress(cb);
     },
   };
 };
@@ -192,18 +188,4 @@ function speakerLabel(speakerId: string | undefined, lang: Language): string {
   if (!speakerId) return '';
   const n = Number(speakerId.match(/\d+/)?.[0]);
   return Number.isFinite(n) ? translate(lang, 'transcript.speaker', { n: n + 1 }) : speakerId;
-}
-
-/**
- * Reads the recorded WAV. It goes through Tauri's `asset://` protocol instead
- * of `file://`, which the webview blocks as a local resource.
- */
-async function readAudioFile(audioPath: string, lang: Language): Promise<ArrayBuffer> {
-  const response = await fetch(convertFileSrc(audioPath));
-  if (!response.ok) {
-    throw new Error(
-      translate(lang, 'err.elevenlabs.readAudio', { status: response.status, path: audioPath }),
-    );
-  }
-  return response.arrayBuffer();
 }

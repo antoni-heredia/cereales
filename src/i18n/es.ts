@@ -84,6 +84,12 @@ export const es: Messages = {
     'Una coma cierra la etiqueta. Van al frontmatter de la nota de Obsidian.',
   'transcript.missing': 'No hay transcripción disponible',
   'transcript.transcribe': 'Transcribir',
+  'transcript.engine': 'Transcribir con',
+  'transcript.noEngine':
+    'Todavía no hay con qué transcribir. Descarga un modelo, o añade una API key, en Ajustes.',
+  'engine.local': 'Local',
+  'engine.onDevice': 'en esta máquina',
+  'engine.uploads': 'sube el audio a {service}',
   'transcript.working': 'Transcribiendo audio…',
   'transcript.workingPercent': 'Transcribiendo audio… {percent}%',
   'transcript.seek': 'Ir a este momento del audio',
@@ -118,6 +124,10 @@ export const es: Messages = {
     'La transcripción se hace en tu equipo: el audio no sale de la máquina.',
   'settings.serviceElevenLabsHint':
     'Usa la API de ElevenLabs para transcribir. Requiere una API key válida.',
+  'settings.serviceDeepgramHint':
+    'Usa la API de Deepgram para transcribir. Requiere una API key válida.',
+  'settings.serviceDefaultHint':
+    'Esto es solo lo que se propone: el motor se puede cambiar para una grabación concreta justo antes de transcribirla.',
   'settings.audioLangGroup': 'Idioma que se habla en las grabaciones',
   'settings.audioLangInterface': 'Igual que la interfaz',
   'settings.audioLangAuto': 'Detectar',
@@ -142,6 +152,7 @@ export const es: Messages = {
   'model.medium': 'Medium — más preciso, bastante más lento',
   'model.large-v3-turbo': 'Large v3 Turbo — el más preciso, pide una máquina potente',
   'settings.elevenLabsGroup': 'Configuración de ElevenLabs',
+  'settings.deepgramGroup': 'Configuración de Deepgram',
   'settings.apiKey': 'API key',
   'settings.save': 'Guardar',
   'settings.apiKeyDirty': 'Sin guardar · Enter para guardar',
@@ -219,5 +230,7 @@ export const es: Messages = {
 
   'err.elevenlabs.noKey': 'Falta la API key de ElevenLabs. Añádela en Ajustes.',
   'err.elevenlabs.http': 'ElevenLabs respondió {status}: {detail}',
-  'err.elevenlabs.readAudio': 'No se pudo leer el audio ({status}): {path}',
+  'err.deepgram.noKey': 'Falta la API key de Deepgram. Añádela en Ajustes.',
+  'err.deepgram.http': 'Deepgram respondió {status}: {detail}',
+  'err.remote.readAudio': 'No se pudo leer el audio ({status}): {path}',
 };

@@ -34,6 +34,40 @@ export interface Recording {
   transcriptPath?: string;
   /** Tags used to categorise the recording in Obsidian. */
   tags?: string[];
+  /**
+   * What produced the transcript, as `engine/model` — `whisper.cpp/small`,
+   * `deepgram/nova-3`. Absent on recordings transcribed before this was
+   * recorded, and on those not transcribed yet.
+   *
+   * It is a label to show and to write into the note, not a key to match on:
+   * the engine can be picked per transcription, so two recordings in the same
+   * folder can disagree about whether they have speaker names or how good the
+   * text is, and without this there is no way to tell which is which.
+   */
+  engine?: string;
+}
+
+/**
+ * Transcription engines, as stable keys rather than labels: they are stored in
+ * the settings and matched on in both languages.
+ *
+ * `local` is whisper.cpp on this machine and needs a downloaded model; the
+ * other two are remote APIs that need a key and send the audio away.
+ */
+export const TRANSCRIPTION_ENGINES = ['local', 'elevenlabs', 'deepgram'] as const;
+
+export type TranscriptionEngine = (typeof TRANSCRIPTION_ENGINES)[number];
+
+/**
+ * What a single transcription runs on. The engine on its own is not the whole
+ * decision: with `local`, which whisper model is used matters as much as the
+ * choice of engine, and both are picked in the same dropdown before
+ * transcribing.
+ */
+export interface TranscriptionChoice {
+  engine: TranscriptionEngine;
+  /** Catalogue id. Only meaningful — and only set — for the local engine. */
+  model?: string;
 }
 
 export interface TranscriptEntry {
@@ -107,7 +141,16 @@ export interface Settings {
   storageRoot: string;
   defaultSourceId: string;
   transcriptFormat: TranscriptFormat;
-  transcriptionService: 'local' | 'elevenlabs';
+  /**
+   * Engine proposed when transcribing. It is a default and not a mode: the
+   * dropdown on the transcript screen can pick any other engine that is ready
+   * for that one recording, without changing this.
+   *
+   * The key is still called `transcriptionService` because it is what every
+   * `settings.json` on disk already says, and renaming it would need a
+   * migration for no gain.
+   */
+  transcriptionService: TranscriptionEngine;
   /**
    * Language the engine is told to expect in the audio, which is not the same
    * question as the interface language. Empty means "follow the interface",
@@ -122,6 +165,7 @@ export interface Settings {
    */
   whisperModel: string;
   elevenLabsApiKey: string;
+  deepgramApiKey: string;
 }
 
 /**
