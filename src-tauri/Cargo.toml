@@ -1,6 +1,6 @@
 [package]
 name = "cereales"
-version = "0.4.0"
+version = "0.5.0"
 description = "Meeting recorder with transcription and timestamped notes"
 edition = "2021"
 rust-version = "1.77.2"
